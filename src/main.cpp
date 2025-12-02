@@ -14,6 +14,7 @@
 #include "Custom_MAX9814.h"
 #include "Custom_MICS5524.h"
 #include "display_screens.h"
+#include "wifi_config.h"
 
 // ============================================================================
 // GxEPD2 用フォント定義
@@ -33,9 +34,6 @@
 // ============================================================================
 // WiFi + NTP 設定
 // ============================================================================
-// TODO: ビルド前に自分のWiFi情報に直書きしてください
-#define WIFI_SSID ""
-#define WIFI_PASSWORD ""
 
 // NTPサーバー設定（JST: UTC+9）
 #define NTP_SERVER1 "pool.ntp.org"

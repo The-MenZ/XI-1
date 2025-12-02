@@ -44,3 +44,6 @@
 .vscode/
 build/
 .DS_Store
+
+# WiFi credentials - keep private
+include/wifi_config.h
