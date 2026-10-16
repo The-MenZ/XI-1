@@ -23,7 +23,9 @@ class CustomMICS5524 {
 private:
   const int ADC_PIN;
   const int HEATER_PIN;       // EN ピン（ヒーター制御）
-  const float CIRCUIT_VOLTAGE = 3.3;     // 検出回路（センサー + ロード抵抗）の電源電圧
+  // 検出回路（センサー + ロード抵抗）の電源電圧。Adafruit MiCS5524 基板は 5V 給電
+  // 注意: 5V 給電ではガス濃度が非常に高いと出力が 3.3V を超えうる（ESP32 の入力上限）
+  const float CIRCUIT_VOLTAGE = 5.0;
   const int SAMPLE_SIZE = 100;       // サンプル数
   const float LOAD_RESISTANCE = 10000.0; // ロード抵抗 (10kΩ)
 
