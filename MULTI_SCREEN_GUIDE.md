@@ -134,12 +134,12 @@ WiFi: Connected
 
 ### 📱 **画面5: Month Day（月日）** - `displayMonthDay()`
 ```
-     10
-
-     16
+  1 | 0
+ ---+---
+  1 | 6
 ```
 
-月と日を2桁ゼロ埋めで大きく表示（`FreeMonoBold24pt7b` × 2倍）。詳細は `MONTHDAY_SCREEN.md`。
+画面を4分割し、上段に月、下段に日を1桁ずつ大きく表示（2桁ゼロ埋め）。数字はフォントを使わず、線の太い丸ゴシック風に描きます。詳細は `MONTHDAY_SCREEN.md`。
 
 ---
 

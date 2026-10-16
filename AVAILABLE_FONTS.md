@@ -17,12 +17,12 @@
 | `FreeSans12pt7b` | Adafruit GFX | 起動時のテスト表示（`main.cpp` の `setup()`）、Date & Time のタイトル、Weather の未取得時の表示 |
 | `FreeSans18pt7b` | Adafruit GFX | Date & Time の日時 |
 | `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示、Weather の未取得時の表示 |
-| `FreeMonoBold24pt7b` | Adafruit GFX | Month Day の月・日（`setTextSize(2)` で 2 倍表示） |
 | `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度、Weather の今の気温（大きな数字） |
 | `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度 |
 | `u8g2_font_helvB12_tf` | U8g2 | Weather の天気の名前・°C・日付・最高/最低気温 |
 | `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY）、Weather の取得時刻・降水確率 |
 
+※ Month Day 画面の数字はフォントを使わず、`display_screens.cpp` の中で直線と楕円弧を丸いペンでなぞって描いています（`MONTHDAY_SCREEN.md` 参照）。
 ※ Date & Time 画面は既定で無効（`SCREEN_DEFAULT_ENABLED[4] = false`。設定ページで ON にできる）です。
 ※ `FreeSans24pt7b`・`FreeMono12pt7b`・`FreeSerif9pt7b` はインクルードされていますが、現在は使われていません。
 
