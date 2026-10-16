@@ -715,7 +715,9 @@ void loop() {
         if (mics5524_data.calibrated) {
           Serial.print("  💨 Rs/Ro比: ");
           Serial.print(mics5524_data.rs_ro_ratio, 3);
-          Serial.print("（測れる下限 ");  // ガス画面の HP はこの下限で 0、1.0 で 100
+          Serial.print("（Ro ");
+          Serial.print(mics5524_data.ro, 0);
+          Serial.print(" Ω、測れる下限 ");  // ガス画面の HP はこの下限で 0、1.0 で 100
           Serial.print(mics5524_data.rs_ro_min, 3);
           Serial.println("）");
 

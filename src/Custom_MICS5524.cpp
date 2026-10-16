@@ -77,14 +77,41 @@ void CustomMICS5524::calibrate() {
     }
 
     Ro = sum_resistance / valid_samples;
+
+    // それまでの日ごとの記録を捨てて、今日の分を今の Ro から始める
+    for (int i = 0; i < RO_DAYS; i++) {
+        daily_max_rs[i] = 0.0f;
+    }
+    day_index = 0;
+    day_start = millis();
+    daily_max_rs[0] = Ro;
     calibrated = true;
     Serial.print("📊 MICS5524 calibrated: Ro=");
     Serial.print(Ro);
     Serial.println(" Ω");
 }
 
+void CustomMICS5524::updateBaseline(float rs) {
+    // 1日たったら次の日の分へ進め、いちばん古い日の分を捨てる
+    while (millis() - day_start >= DAY_MS) {
+        day_start += DAY_MS;
+        day_index = (day_index + 1) % RO_DAYS;
+        daily_max_rs[day_index] = 0.0f;
+    }
+    if (rs > daily_max_rs[day_index]) {
+        daily_max_rs[day_index] = rs;
+    }
+
+    Ro = 0.0f;
+    for (int i = 0; i < RO_DAYS; i++) {
+        if (daily_max_rs[i] > Ro) {
+            Ro = daily_max_rs[i];
+        }
+    }
+}
+
 MICS5524Data CustomMICS5524::read() {
-    MICS5524Data data = {0, 0.0f, 0.0f, 0.0f, 0.0f, false, false, 0.0f, 0.0f};
+    MICS5524Data data = {0, 0.0f, 0.0f, 0.0f, 0.0f, false, false, 0.0f, 0.0f, 0.0f};
 
     // Sampling
     long sum_raw = 0;
@@ -127,6 +154,9 @@ MICS5524Data CustomMICS5524::read() {
     // Rs/Ro と ppm はウォームアップ後のキャリブレーションが済んでから
     data.calibrated = calibrated;
     if (calibrated && Ro > 0) {
+        // 基準の Ro を直近の記録に合わせてから比を出す（Ro は直近の最大なので Rs/Ro は 1 を超えない）
+        updateBaseline(data.resistance);
+        data.ro = Ro;
         data.rs_ro_ratio = data.resistance / Ro;
 
         // PPM calculation (CO reference)

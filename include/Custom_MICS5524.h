@@ -17,6 +17,7 @@ struct MICS5524Data {
     float ppm_equivalent;    // ppm equivalent (CO reference)
     bool heater_enabled;     // Heater status
     bool calibrated;         // Ro calibrated (false while warming up)
+    float ro;                // 今の基準の抵抗 Ro（Ω。キャリブレーション前は 0）
     float rs_ro_min;         // 測れる Rs/Ro の下限（出力が ADC の上限電圧のとき。キャリブレーション前は 0）
     float warmup_progress;   // ヒーターのウォームアップの進み具合（0〜1。1 で完了）
 };
@@ -34,10 +35,25 @@ private:
   // ヒーターが温まって値が安定するまでの時間
   const unsigned long WARMUP_MS = 3UL * 60 * 1000;  // 3分
 
-  // キャリブレーション値 (新鮮な空気中での基準値)
-  float Ro = 10000.0;  // 新鮮な空気中のセンサー抵抗 (Ω)
+  // 基準の抵抗 Ro（Ω）。Rs/Ro が 1 = ガス画面の HP 100
+  // キャリブレーションでその時の Rs にし、その後は直近 RO_DAYS 日でいちばんきれいだったとき
+  // （Rs がいちばん大きかったとき）の Rs にする。汚れた空気の中で起動しても、きれいな空気が来れば直る
+  float Ro = 10000.0;
   bool calibrated = false;
   unsigned long heater_on_time = 0;
+
+  // 1日ごとのいちばん大きい Rs を RO_DAYS 日分覚えておき、その最大を Ro にする。古い日は1日ごとに捨てる
+  // （何日も汚れたままでも約1週間は汚いと出て、それより長いずれはセンサーのずれとして吸収する）
+  // 一番新しい分は途中の「今日」なので、8日分あれば必ず丸7日以上を見られる。
+  // RAM は float 4個（16B）単位で取られるので、7日分にしても使う量は同じ
+  static const int RO_DAYS = 8;
+  const unsigned long DAY_MS = 24UL * 60 * 60 * 1000;
+  float daily_max_rs[RO_DAYS] = {};  // Ω。0 はまだ測っていない日
+  int day_index = 0;                 // 今日の分の添字
+  unsigned long day_start = 0;       // 今日の分を数え始めた時刻（millis）
+
+  // 今の Rs を今日の分に入れ（1日たっていたら次の日へ進める）、Ro を直近 RO_DAYS 日の最大にする
+  void updateBaseline(float rs);
 
   // CO 換算の近似式（DFRobot_MICS ライブラリと同じ）
   // ppm = (0.425 - Rs/Ro) / 0.000405 （Rs/Ro が下がるほど CO が多い、1〜1000ppm）
@@ -65,6 +81,7 @@ public:
   bool isCalibrated() const { return calibrated; }
 
   // キャリブレーション（ウォームアップ後、新鮮な空気中で呼び出す）
+  // 今の Rs を Ro にし、それまでの日ごとの記録は捨てる
   void calibrate();
 
   // センサー読み込み
