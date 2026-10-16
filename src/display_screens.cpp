@@ -840,40 +840,63 @@ static const uint8_t QR_MAX_VERSION = sizeof(QR_BYTE_CAPACITY_Q) / sizeof(QR_BYT
 // v7 以降は中央に位置合わせパターンが入るので、アイコンを重ねない
 static const uint8_t QR_ICON_MAX_VERSION = 6;
 
-// QR 中央のアイコン（32×32、1bit、Adafruit GFX の drawBitmap 形式）
-// 隠れるのは QR 全体の 8% 以下（v2〜v6、200px 表示時）
-#define QR_ICON_SIZE 32
-#define QR_ICON_MARGIN 2  // アイコンの周りの白い余白（px）
+// QR 中央のバッジ: 外から白い枠・黒い枠・白い枠、その内側いっぱいにアイコン
+// バッジは QR_BADGE_MIN_PX 以上の奇数マスの正方形（v2〜v6 で 42〜49 px）
+// 隠れるのは QR 全体の 8% 以下で、どのブロックも誤り訂正で直せる数のコード語しか壊さない
+// （大きくすると v3 で 9 マス = 54 px になり、小さく写したときに読めなくなる）
+#define QR_BADGE_MIN_PX 42
+#define QR_BADGE_GAP 2     // 外側の白い枠（px）
+#define QR_BADGE_BORDER 2  // 黒い枠（px）
+#define QR_BADGE_PAD 2     // 内側の白い枠（px）
 
-// WiFi マーク（WiFi QR 用）
-static const uint8_t ICON_WIFI[] = {
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x3F, 0xFC, 0x00, 0x01, 0xFF, 0xFF, 0x80, 0x07, 0xFF, 0xFF, 0xE0,
-  0x1F, 0xF0, 0x0F, 0xF8, 0x3F, 0x00, 0x00, 0xFC, 0x7C, 0x00, 0x00, 0x3E,
-  0xF8, 0x07, 0xE0, 0x1F, 0xE0, 0x7F, 0xFE, 0x07, 0x41, 0xFF, 0xFF, 0x82,
-  0x03, 0xFF, 0xFF, 0xC0, 0x07, 0xE0, 0x07, 0xE0, 0x0F, 0x80, 0x01, 0xF0,
-  0x07, 0x00, 0x00, 0xE0, 0x00, 0x0F, 0xF0, 0x00, 0x00, 0x3F, 0xFC, 0x00,
-  0x00, 0x7F, 0xFE, 0x00, 0x00, 0x7E, 0x7E, 0x00, 0x00, 0x30, 0x0C, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xC0, 0x00,
-  0x00, 0x07, 0xE0, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x00, 0x07, 0xE0, 0x00,
-  0x00, 0x07, 0xE0, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+// WiFi マーク（WiFi QR 用）: 点と、それを中心にした3本の弧（真上から ±45°、端は丸い）
+// s×s の正方形の幅いっぱいに描く（幅 11.1u、高さ 8.8u なので上下は少し空く）
+static void drawWiFiIcon(int16_t x0, int16_t y0, int16_t s) {
+  float u = s / 11.1f;
+  float half_t = 0.6f * u;                         // 弧の太さの半分
+  float cx = x0 + s / 2.0f;
+  float cy = y0 + (s - 8.8f * u) / 2 + 7.6f * u;  // 点の中心
+  for (int16_t y = y0; y < y0 + s; y++) {
+    for (int16_t x = x0; x < x0 + s; x++) {
+      float dx = fabsf(x + 0.5f - cx);
+      float dy = cy - (y + 0.5f);
+      float r = sqrtf(dx * dx + dy * dy);
+      bool on = r <= 1.2f * u;
+      for (int k = 1; k <= 3 && !on; k++) {
+        float mid = (2 * k + 1) * u;  // 弧の太さの真ん中の半径
+        float end = mid * 0.7071f;    // 弧の端（45°）の x, y
+        on = (dx <= dy && fabsf(r - mid) <= half_t) ||
+             (dx - end) * (dx - end) + (dy - end) * (dy - end) <= half_t * half_t;
+      }
+      if (on) {
+        display.drawPixel(x, y, GxEPD_BLACK);
+      }
+    }
+  }
+}
 
-// 歯車（設定ページ QR 用）
-static const uint8_t ICON_GEAR[] = {
-  0x00, 0x01, 0x80, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x00, 0x07, 0xE0, 0x00,
-  0x01, 0x07, 0xE0, 0x80, 0x03, 0x87, 0xE1, 0xC0, 0x07, 0xC7, 0xE3, 0xE0,
-  0x0F, 0xFF, 0xFF, 0xF0, 0x1F, 0xFF, 0xFF, 0xF8, 0x0F, 0xFF, 0xFF, 0xF0,
-  0x07, 0xFF, 0xFF, 0xE0, 0x03, 0xFF, 0xFF, 0xC0, 0x03, 0xFC, 0x3F, 0xC0,
-  0x03, 0xF8, 0x1F, 0xC0, 0x7F, 0xF0, 0x0F, 0xFE, 0x7F, 0xE0, 0x07, 0xFE,
-  0xFF, 0xE0, 0x07, 0xFF, 0xFF, 0xE0, 0x07, 0xFF, 0x7F, 0xE0, 0x07, 0xFE,
-  0x7F, 0xF0, 0x0F, 0xFE, 0x03, 0xF8, 0x1F, 0xC0, 0x03, 0xFC, 0x3F, 0xC0,
-  0x03, 0xFF, 0xFF, 0xC0, 0x07, 0xFF, 0xFF, 0xE0, 0x0F, 0xFF, 0xFF, 0xF0,
-  0x1F, 0xFF, 0xFF, 0xF8, 0x0F, 0xFF, 0xFF, 0xF0, 0x07, 0xC7, 0xE3, 0xE0,
-  0x03, 0x87, 0xE1, 0xC0, 0x01, 0x07, 0xE0, 0x80, 0x00, 0x07, 0xE0, 0x00,
-  0x00, 0x07, 0xE0, 0x00, 0x00, 0x01, 0x80, 0x00,
-};
+// 歯車（設定ページ QR 用）: 8枚の歯と中央の穴。s×s の正方形いっぱいに描く
+static void drawGearIcon(int16_t x0, int16_t y0, int16_t s) {
+  float ro = s / 2.0f;     // 歯の先の半径
+  float hw = ro * 0.2f;    // 歯の幅の半分
+  for (int16_t y = 0; y < s; y++) {
+    for (int16_t x = 0; x < s; x++) {
+      float dx = fabsf(x + 0.5f - ro);
+      float dy = fabsf(y + 0.5f - ro);
+      float r = sqrtf(dx * dx + dy * dy);
+      if (r > ro || r < ro * 0.32f) {
+        continue;
+      }
+      // 本体の円 + 中心を通る4本の帯（縦・横・斜め2本）が向かい合う2枚ずつの歯になる
+      if (r <= ro * 0.72f || dx <= hw || dy <= hw || fabsf(dx - dy) <= hw * 1.4142f) {
+        display.drawPixel(x0 + x, y0 + y, GxEPD_BLACK);
+      }
+    }
+  }
+}
+
+// アイコンを s×s の正方形に描く関数
+typedef void (*QRIconDrawer)(int16_t x0, int16_t y0, int16_t s);
 
 // WiFi QR の値に含まれる特殊文字（\ ; , : "）をバックスラッシュでエスケープ
 static String escapeWiFiQRField(const String& value) {
@@ -888,8 +911,8 @@ static String escapeWiFiQRField(const String& value) {
   return escaped;
 }
 
-// text を QR コードにして画面中央に描き、icon があれば中央に重ねる
-static void drawQRCode(const String& text, const uint8_t* icon) {
+// text を QR コードにして画面中央に描き、drawIcon があれば中央にアイコンのバッジを重ねる
+static void drawQRCode(const String& text, QRIconDrawer drawIcon) {
   // 文字列が収まる最小のバージョンを選ぶ（小さいほど1マスを大きく描ける）
   uint8_t version = 0;
   for (uint8_t v = 1; v <= QR_MAX_VERSION; v++) {
@@ -961,13 +984,13 @@ static void drawQRCode(const String& text, const uint8_t* icon) {
   
   Serial.printf("DEBUG: black_pixels=%d (drawn with fillRect)\n", black_pixels);
 
-  if (icon == nullptr || version > QR_ICON_MAX_VERSION) {
+  if (drawIcon == nullptr || version > QR_ICON_MAX_VERSION) {
     return;
   }
 
-  // アイコン + 余白を覆う奇数マスの白い正方形を、QR の中央のマスに合わせて置く
+  // バッジは奇数マスの白い正方形にして、QR の中央のマスに合わせて置く
   // （QR の一辺は必ず奇数マスなので、奇数マスの正方形はちょうど中央に収まる）
-  int box = (QR_ICON_SIZE + QR_ICON_MARGIN * 2 + module_size - 1) / module_size;
+  int box = (QR_BADGE_MIN_PX + module_size - 1) / module_size;
   if (box % 2 == 0) {
     box++;
   }
@@ -975,11 +998,11 @@ static void drawQRCode(const String& text, const uint8_t* icon) {
   int box_x = start_x + (qrcode.size - box) / 2 * module_size;
   int box_y = start_y + (qrcode.size - box) / 2 * module_size;
   display.fillRect(box_x, box_y, box_px, box_px, GxEPD_WHITE);
-  display.drawBitmap(
-    box_x + (box_px - QR_ICON_SIZE) / 2,
-    box_y + (box_px - QR_ICON_SIZE) / 2,
-    icon, QR_ICON_SIZE, QR_ICON_SIZE, GxEPD_BLACK
-  );
+  drawFrame(box_x + QR_BADGE_GAP, box_y + QR_BADGE_GAP,
+            box_px - QR_BADGE_GAP * 2, box_px - QR_BADGE_GAP * 2, QR_BADGE_BORDER);
+  // アイコンは内側の白い枠の中いっぱい（30〜37 px）
+  int inset = QR_BADGE_GAP + QR_BADGE_BORDER + QR_BADGE_PAD;
+  drawIcon(box_x + inset, box_y + inset, box_px - inset * 2);
 }
 
 void displayWiFiQR(const String& ssid, const String& password) {
@@ -992,7 +1015,7 @@ void displayWiFiQR(const String& ssid, const String& password) {
     wifi_string = "WIFI:T:WPA;S:" + escapeWiFiQRField(ssid) +
                   ";P:" + escapeWiFiQRField(password) + ";;";
   }
-  drawQRCode(wifi_string, ICON_WIFI);
+  drawQRCode(wifi_string, drawWiFiIcon);
 }
 
 void displaySettingsQR(const String& url) {
@@ -1007,7 +1030,7 @@ void displaySettingsQR(const String& url) {
     display.print("WiFi: Not Connected");
     return;
   }
-  drawQRCode(url, ICON_GEAR);
+  drawQRCode(url, drawGearIcon);
 }
 
 // U8g2 フォントで描くためのオブジェクト（画面7: Climate Modern、画面9: Weather、画面10: Pressure で共用）
