@@ -2,11 +2,11 @@
 
 ## 📱 機能概要
 
-ESP32-C3 + e-paper ディスプレイが **12の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
+ESP32-C3 + e-paper ディスプレイが **13の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
 
-- 画面は `src/main.cpp` の `NUM_SCREENS`（= 12）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
+- 画面は `src/main.cpp` の `NUM_SCREENS`（= 13）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
 - 無効な画面はスキップされ、次の有効な画面が表示される（`isScreenEnabled()` / `nextEnabledScreen()`）
-- デフォルトでは **画面4: Date & Time だけが無効**（11画面をローテーション）
+- デフォルトでは **画面4: Date & Time だけが無効**（12画面をローテーション）
 - AP モード中（WiFi に接続できないとき）は、画面6: WiFi QR と画面8: Settings QR だけを交互に表示する
 - 各画面の描画関数は `src/display_screens.cpp` にあり、センサーデータは引数で受け取る（→ `SENSOR_DATA_PASSING.md`）
 
@@ -38,11 +38,13 @@ ESP32-C3 + e-paper ディスプレイが **12の画面を10秒ごと（設定ペ
 │ 画面10: Pressure        (BMP280)            │
 │ ↓ 10秒                                      │
 │ 画面11: Sound           (MAX9814)           │
+│ ↓ 10秒                                      │
+│ 画面12: Light           (VEML7700)          │
 │ ↓ 10秒 (画面0へループ)                      │
 └─────────────────────────────────────────────┘
 ```
 
-画面番号は `display_mode` の値（0〜11）です。シリアル出力では `Screen 1/12`〜`Screen 12/12`（`display_mode + 1`）と表示されます。
+画面番号は `display_mode` の値（0〜12）です。シリアル出力では `Screen 1/13`〜`Screen 13/13`（`display_mode + 1`）と表示されます。
 
 ---
 
@@ -231,6 +233,18 @@ HUMIDITY
 
 ---
 
+### 📱 **画面12: Light（照度 猫の目）** - `displayLight()`
+
+猫の目の瞳の幅で、照度を見せます。明るいと瞳が縦に細く、暗いとまんまるになります（1〜10,000 lx の間で、桁ごとに同じだけ細くする）。10,000 lx から上はまぶしそうに目を細め、10 lx 未満は画面を黒くして目だけを白く出します。下に照度の数字（例: `300lx`）を出します。
+
+- 瞳と数字は `VEML7700Data::lux`
+- 目・口・ひげ・数字は画像を持たずに、レンズ形・円・楕円と線で描く
+- VEML7700 未接続時は `VEML7700 / Not / Connected` と表示
+
+詳細は `LIGHT_SCREEN.md`。
+
+---
+
 ## 🔧 カスタマイズ
 
 ### 1. 画面の有効/無効を切り替える
@@ -240,7 +254,7 @@ HUMIDITY
 保存する前（初回起動時・初期化後）の既定値は `src/main.cpp` の `SCREEN_DEFAULT_ENABLED` です。
 
 ```cpp
-#define NUM_SCREENS 12
+#define NUM_SCREENS 13
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
@@ -254,6 +268,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面9: Weather (天気。地域は設定ページで選ぶ)
   true,   // 画面10: Pressure (天気図風の H/L と等圧線)
   true,   // 画面11: Sound (レトロな VU メーター)
+  true,   // 画面12: Light (猫の目)
 };
 ```
 
@@ -263,7 +278,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 
 ### 3. 画面の順序を変更
 
-表示順は `display_mode` の番号順（0→11）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
+表示順は `display_mode` の番号順（0→12）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
 
 ### 4. 画面の追加
 
@@ -276,18 +291,18 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 void displayCustom(const AHT21Data& aht21_data, bool aht21_enabled);
 
 // main.cpp
-#define NUM_SCREENS 13
+#define NUM_SCREENS 14
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
-  // ... 既存の12画面 ...
-  true,   // 画面12: Custom
+  // ... 既存の13画面 ...
+  true,   // 画面13: Custom
 };
 const char* const SCREEN_NAMES[NUM_SCREENS] = {
-  // ... 既存の12画面 ...
+  // ... 既存の13画面 ...
   "Custom",
 };
 
 // loop() の switch 内
-case 12:
+case 13:
   displayCustom(aht21_data, sensor_aht21_enabled);
   break;
 ```

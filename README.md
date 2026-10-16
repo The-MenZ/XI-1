@@ -120,8 +120,9 @@ graph TB
 | **9: Weather** | 今の天気・気温と、今日・明日の天気・最高/最低気温・降水確率 | Open-Meteo（地域は設定ページで選ぶ） |
 | **10: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
 | **11: Sound** | レトロな VU メーター（針は騒音レベルからマイク基板のノイズの高さを引いた dB。静かなときが +0、+30dB から右は黒い帯）。下に補正後の数字 | MAX9814 |
+| **12: Light** | 猫の目（明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面が黒くなる）。下に照度の数字 | VEML7700 |
 
-画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md) を参照。
+画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
 
 ---
 
@@ -171,6 +172,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面9: Weather
   true,   // 画面10: Pressure
   true,   // 画面11: Sound
+  true,   // 画面12: Light
 };
 ```
 

@@ -11,10 +11,11 @@
 // 丸いペン（半径 r）で線を引く（画面5 の月日表示で定義）
 static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r, uint16_t color = GxEPD_BLACK);
 // 2次ベジェ曲線を丸いペンでなぞる（画面3 のガスセンサーで定義。r はペンの半径）
-static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2, int16_t r = 1);
+static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2, int16_t r = 1, uint16_t color = GxEPD_BLACK);
 // 丸ゴシック風の数字（0〜9）か「?」（GLYPH_QUESTION）を描く（画面5 の月日表示で定義）
 #define GLYPH_QUESTION 10
-static void drawGlyph(int glyph, int16_t left, int16_t top, int16_t w, int16_t h, int16_t r, int16_t edge);
+static void drawGlyph(int glyph, int16_t left, int16_t top, int16_t w, int16_t h, int16_t r, int16_t edge,
+                      uint16_t color = GxEPD_BLACK);
 // 2px の線と、黒い太陽（画面9 の天気で定義）
 static void drawThickLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1);
 static void drawSun(int16_t cx, int16_t cy, int16_t r);
@@ -455,8 +456,8 @@ static void drawOutlinedCircle(int16_t cx, int16_t cy, int16_t r) {
 }
 
 // (x0, y0) から (x2, y2) への2次ベジェ曲線（制御点 (x1, y1)）を半径 r の丸いペンでなぞる
-// r の既定値（ファイルの先頭で宣言）はカナリアの線と同じ 1（CANARY_PEN_R）
-static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2, int16_t r) {
+// r の既定値（ファイルの先頭で宣言）はカナリアの線と同じ 1（CANARY_PEN_R）。color の既定値は黒
+static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2, int16_t r, uint16_t color) {
   const int n = 8;
   float px = x0, py = y0;
   for (int k = 1; k <= n; k++) {
@@ -464,7 +465,7 @@ static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2
     float u = 1 - t;
     float qx = u * u * x0 + 2 * u * t * x1 + t * t * x2;
     float qy = u * u * y0 + 2 * u * t * y1 + t * t * y2;
-    drawRoundLine(px, py, qx, qy, r);
+    drawRoundLine(px, py, qx, qy, r, color);
     px = qx;
     py = qy;
   }
@@ -797,17 +798,18 @@ static void drawGlyphStrokes(const DigitGlyph& glyph, float ox, float oy, float 
 }
 
 // 数字（0〜9）か「?」（GLYPH_QUESTION）を、外形が w × h になるよう (left, top) に描く
-// edge が 0 なら黒く塗り、1 以上なら太さ edge の黒い縁だけ残した白抜きにする
-static void drawGlyph(int glyph, int16_t left, int16_t top, int16_t w, int16_t h, int16_t r, int16_t edge) {
+// edge が 0 なら塗り、1 以上なら太さ edge の縁だけ残した白抜きにする
+// color は字の色（既定は黒。黒い背景に白で描くときは白にする。白抜きの中は反対の色になる）
+static void drawGlyph(int glyph, int16_t left, int16_t top, int16_t w, int16_t h, int16_t r, int16_t edge, uint16_t color) {
   const DigitGlyph& g = glyph == GLYPH_QUESTION ? QUESTION_GLYPH : DIGIT_GLYPHS[glyph];
   // 設計座標 → 画面座標。外形が w × h になるよう、ペンの太さを除いた分に中心線を合わせる
   float sx = (w - 2 * r - 1) / 60.0f;
   float sy = (h - 2 * r - 1) / 80.0f;
   // 白抜きは、黒いペンで全部なぞってから、同じ中心線を細い白いペンでなぞる
   // （1本ずつ黒と白を重ねると、次の線の黒が前の線の白を消してしまう）
-  drawGlyphStrokes(g, left + r, top + r, sx, sy, r, GxEPD_BLACK);
+  drawGlyphStrokes(g, left + r, top + r, sx, sy, r, color);
   if (edge > 0) {
-    drawGlyphStrokes(g, left + r, top + r, sx, sy, r - edge, GxEPD_WHITE);
+    drawGlyphStrokes(g, left + r, top + r, sx, sy, r - edge, color == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK);
   }
 }
 
@@ -1842,4 +1844,144 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
   display.setFont(&FreeSans12pt7b);
   display.setCursor(display.getCursorX() + 2, 194);
   display.print("dB");
+}
+
+// ============================================================================
+// 画面12: Light（猫の目）
+// ============================================================================
+// 猫の瞳は、明るいと縦に細く、暗いとまんまるになる。その瞳の幅で照度を見せる。
+// 瞳は 1〜10,000 lx の間で、桁ごとに同じだけ細くする。10,000 lx から上は、まぶしそうに目を細める。
+// 10 lx 未満は画面を黒くして、目だけを白く出す。下に照度の数字。
+// 絵は画像を持たずに、レンズ形（2つの円が重なった形）・円・楕円と線で描く
+
+#define CAT_EYE_Y 62            // 目の中心の y（x は CAT_EYE_X）
+#define CAT_EYE_A 40            // 目（白い部分）の幅の半分
+#define CAT_EYE_B 32            // 目の高さの半分
+#define CAT_EYE_EDGE 5          // 目の縁の太さ
+#define CAT_IRIS_R 28           // 虹彩の輪（太さ 3px）の半径
+#define CAT_PUPIL_R 24          // 瞳の縦の半径。いちばん暗いときは幅の半分もこれ（まんまる）
+#define CAT_PUPIL_MIN 3         // いちばん明るいときの瞳の幅の半分
+#define CAT_DARK_LUX 10         // これ未満は画面を黒くする
+#define CAT_SLIT_LUX 10000      // 瞳がいちばん細くなる照度。ここから上は目を細める
+#define CAT_SQUINT_LUX 30000    // 目をいちばん細める照度（今のセンサーの設定で測れる上限の目安）
+#define CAT_SQUINT_MAX 0.55f    // 目をいちばん細めたときに閉じる割合
+#define LUX_DIGIT_TOP 144       // 照度の数字の位置と大きさ
+#define LUX_DIGIT_H 46
+#define LUX_DIGIT_W 30          // 1桁の幅（桁が多くて収まらないときは細くする）
+#define LUX_DIGIT_GAP 5
+
+static const int16_t CAT_EYE_X[2] = {50, 150};
+
+// 横の半径 a・縦の半径 b のレンズ形（上の弧と下の弧が、左右の端で交わる形）
+// 上の弧は (0, d) を中心とする円、下の弧は (0, -d) を中心とする円で、どちらも半径の2乗は r2
+// （半径を 0.5px 広げて、上下の端に 1px だけ飛び出す点ができないようにしている）
+struct Lens {
+  float d, r2;
+};
+
+static Lens makeLens(float a, float b) {
+  float d = (a * a - b * b) / (2 * b);
+  return {d, (d + b + 0.5f) * (d + b + 0.5f)};
+}
+
+static bool inLens(const Lens& lens, float dx, float dy) {
+  return dx * dx + (dy - lens.d) * (dy - lens.d) <= lens.r2 && dx * dx + (dy + lens.d) * (dy + lens.d) <= lens.r2;
+}
+
+// 猫の目を1つ描く。pupil_w は瞳の幅の半分、open は目の開き具合（1 で全開）
+// 目を細めたときに、まぶたの外へ虹彩や瞳がはみ出さないよう、1px ずつ色を決めて描く
+static void drawCatEye(int16_t cx, float pupil_w, float open) {
+  const int16_t a = CAT_EYE_A + CAT_EYE_EDGE, b = CAT_EYE_B + CAT_EYE_EDGE;
+  const Lens outer = makeLens(a, b);
+  const Lens inner = makeLens(CAT_EYE_A, CAT_EYE_B * open);
+  // 瞳に映った光。瞳の右上に、はみ出さない大きさで置く（瞳が細いときは出さない）
+  float shine_x = pupil_w * 0.45f, shine_r = fminf(5, pupil_w * 0.3f);
+  if (shine_r < 2) {
+    shine_r = 0;
+  }
+  for (int16_t dy = -b; dy <= b; dy++) {
+    for (int16_t dx = -a; dx <= a; dx++) {
+      if (!inLens(outer, dx, dy)) {
+        continue;
+      }
+      bool white = inLens(inner, dx, dy);
+      if (white) {
+        // 瞳の楕円も 0.5px 広げて、細いときに真ん中の左右へ 1px 飛び出す点ができないようにする
+        float px = dx / (pupil_w + 0.5f), py = dy / (CAT_PUPIL_R + 0.5f);
+        bool pupil = px * px + py * py <= 1;
+        bool shine = (dx - shine_x) * (dx - shine_x) + (dy + 10) * (dy + 10) <= shine_r * shine_r;
+        bool ring = fabsf(sqrtf(dx * dx + dy * dy) - CAT_IRIS_R) <= 1.5f;
+        white = !ring && (!pupil || shine);
+      }
+      display.drawPixel(cx + dx, CAT_EYE_Y + dy, white ? GxEPD_WHITE : GxEPD_BLACK);
+    }
+  }
+}
+
+// 鼻と ω の口と、左右2本ずつのひげ
+static void drawCatMouth(uint16_t color) {
+  display.fillTriangle(92, 104, 108, 104, 100, 112, color);
+  drawRoundLine(100, 112, 100, 116, 1, color);
+  drawCurve(100, 116, 95, 124, 88, 117, 2, color);
+  drawCurve(100, 116, 105, 124, 112, 117, 2, color);
+  drawRoundLine(80, 110, 36, 104, 1, color);
+  drawRoundLine(80, 118, 38, 124, 1, color);
+  drawRoundLine(120, 110, 164, 104, 1, color);
+  drawRoundLine(120, 118, 162, 124, 1, color);
+}
+
+// 照度の数字（丸ゴシック風）と「lx」を合わせて、下の真ん中に寄せる
+static void drawLuxValue(long lux, uint16_t color) {
+  char digits[8];
+  int n = snprintf(digits, sizeof(digits), "%ld", lux);
+  int16_t bx, by;
+  uint16_t unit_w, bh;
+  display.setFont(&FreeSans12pt7b);
+  display.getTextBounds("lx", 0, 0, &bx, &by, &unit_w, &bh);
+  // 6桁（100,000 lx 以上）でも収まるよう、画面の幅（左右 4px あける）に入らなければ数字を細くする
+  int16_t w = min(LUX_DIGIT_W, (192 - unit_w - 4 - (n - 1) * LUX_DIGIT_GAP) / n);
+  int16_t r = max(2, (int)lroundf(w * 0.14f));  // ペンの半径（線の太さは 2r+1）
+  int16_t x = 100 - (n * w + (n - 1) * LUX_DIGIT_GAP + 4 + unit_w) / 2;
+  for (int i = 0; i < n; i++) {
+    drawGlyph(digits[i] - '0', x, LUX_DIGIT_TOP, w, LUX_DIGIT_H, r, 0, color);
+    x += w + LUX_DIGIT_GAP;
+  }
+  display.setTextColor(color);
+  display.setCursor(x - LUX_DIGIT_GAP + 4 - bx, LUX_DIGIT_TOP + LUX_DIGIT_H);
+  display.print("lx");
+  display.setTextColor(GxEPD_BLACK);
+}
+
+void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled) {
+  if (!sensor_enabled) {
+    display.setCursor(2, 56);
+    display.println("VEML7700");
+    display.setCursor(2, 88);
+    display.println("Not");
+    display.setCursor(2, 120);
+    display.println("Connected");
+    return;
+  }
+
+  float lux = fminf(fmaxf(veml7700_data.lux, 0.0f), 999999.0f);  // 読めなかったとき（NaN）は 0
+  long shown = lroundf(lux);  // 出す数字。黒い画面にするかも、この数字で決める（9.6 lx が黒い画面で 10 と出ないように）
+  bool dark = shown < CAT_DARK_LUX;
+  uint16_t color = dark ? GxEPD_WHITE : GxEPD_BLACK;
+  if (dark) {
+    display.fillScreen(GxEPD_BLACK);
+  }
+
+  // 瞳の幅: 1〜10,000 lx で、桁ごとに同じだけ細くする
+  float lit = log10f(fmaxf(lux, 1.0f));
+  float t = constrain(lit / log10f(CAT_SLIT_LUX), 0.0f, 1.0f);
+  float pupil_w = CAT_PUPIL_R - (CAT_PUPIL_R - CAT_PUPIL_MIN) * t;
+  // まぶしさ: 10,000〜30,000 lx で、目を細める
+  float s = constrain((lit - log10f(CAT_SLIT_LUX)) / log10f((float)CAT_SQUINT_LUX / CAT_SLIT_LUX), 0.0f, 1.0f);
+  float open = 1 - CAT_SQUINT_MAX * s;
+  for (int i = 0; i < 2; i++) {
+    drawCatEye(CAT_EYE_X[i], pupil_w, open);
+  }
+
+  drawCatMouth(color);
+  drawLuxValue(shown, color);
 }

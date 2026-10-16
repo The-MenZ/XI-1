@@ -74,4 +74,8 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
 // 針は補正後の騒音（マイク基板のノイズの高さを引いた dB、+0〜+40）。+30dB から右は黒い帯（うるさい）
 void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);
 
+// 画面12: Light（猫の目）
+// 明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面を黒くする。下に照度の数字
+void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled);
+
 #endif // DISPLAY_SCREENS_H

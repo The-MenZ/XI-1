@@ -50,6 +50,7 @@ void displayPressure(                                                         //
   float trend_3h  // 約3時間前からの気圧の変化（hPa）。履歴が3時間分たまるまでは NAN
 );
 void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);     // 画面11
+void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled);   // 画面12
 ```
 
 ## 🧩 データ構造体（`include/Custom_*.h`）
@@ -247,6 +248,11 @@ switch(display_mode) {
   case 11:
     // Sound 画面 - マイクのデータ（補正後の騒音）を渡す
     displaySound(max9814_data, sensor_max9814_enabled);
+    break;
+
+  case 12:
+    // Light 画面 - 照度のデータを渡す
+    displayLight(veml7700_data, sensor_veml7700_enabled);
     break;
 }
 ```
