@@ -176,7 +176,7 @@ case SCREEN_SETTINGS_QR:
 | 1 | Climate | 温度, 湿度, 気圧, 高度 | 有効 |
 | 2 | Ambience | 照度, 騒音レベル | 有効 |
 | 3 | Gas Sensor | カナリアと HP ゲージ（起動後3分間は卵） | 有効 |
-| 4 | Date & Time | 日時表示（フル） | **無効** |
+| 4 | Time | パタパタ時計（時・分） | 有効 |
 | 5 | Month Day | 月・日のみ | 有効 |
 | 6 | **WiFi QR** | WiFi の QRコード | 有効 |
 | 7 | Climate Modern | 温湿度の円形ゲージ＋過去24時間グラフ | 有効 |
@@ -201,7 +201,9 @@ Ambience
     ↓ 10秒
 Gas Sensor
     ↓ 10秒
-Month Day          ← Date & Time は既定で無効なのでスキップ
+Time
+    ↓ 10秒
+Month Day
     ↓ 10秒
 WiFi QR
     ↓ 10秒

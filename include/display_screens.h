@@ -41,8 +41,9 @@ void displayAmbience(
 // 画面3: Gas Sensor (ガスセンサー)
 void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled);
 
-// 画面4: 日時表示（NTP同期時刻）
-void displayDateTime(bool isWiFiConnected, const String& dateTimeStr);
+// 画面4: Time（パタパタ時計。黒い札2枚に時と分を24時間表示で描く）
+// synced が false（NTP で時刻が合う前）なら、数字の代わりに「??」を出す
+void displayTime(int hour, int minute, bool synced);
 
 // 画面5: 月日表示（画面を4分割し、月日の4桁を大きな丸ゴシック風の数字で描く）
 void displayMonthDay(int month, int day);

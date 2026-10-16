@@ -157,7 +157,7 @@ mics5524.calibrate();
 1. **Climate** - AHT21/BMP280（温度/湿度/気圧/高度）
 2. **Ambience** - VEML7700/MAX9814（照度/騒音）
 3. **Gas Sensor** - MICS5524（炭鉱のカナリアと RPG 風の HP ゲージ。ウォームアップ中は卵）
-4. **Date & Time** - NTP 時刻（既定で無効）
+4. **Time** - パタパタ時計（NTP 時刻の時と分）
 5. **Month Day** - 月日
 6. **WiFi QR** - WiFi 接続用 QR コード
 7. **Climate Modern** - 温湿度の円形ゲージ＋過去24時間グラフ

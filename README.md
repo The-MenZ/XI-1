@@ -112,7 +112,7 @@ graph TB
 | **1: Climate** | 温度・湿度・気圧・高度 | AHT21・BMP280 |
 | **2: Ambience** | 照度・マイク音量 | VEML7700・MAX9814 |
 | **3: Gas Sensor** | 炭鉱のカナリアと RPG 風の HP ゲージ（HP は Rs/Ro から計算。起動後3分間は卵） | MICS5524 |
-| **4: Date & Time** | 現在時刻（既定で無効） | NTP同期 |
+| **4: Time** | パタパタ時計（黒い札2枚に時と分。24時間表示で、時刻が合う前は「??」） | NTP同期 |
 | **5: Month Day** | 月日表示 | NTP同期 |
 | **6: WiFi QR** | WiFi QR コード（中央に WiFi マーク。AP モード中は本体の AP） | WiFi接続情報 |
 | **7: Climate Modern** | 温度・湿度の円形ゲージ＋過去24時間グラフ | AHT21・BMP280 |
@@ -122,7 +122,7 @@ graph TB
 | **11: Sound** | レトロな VU メーター（針は騒音レベルからマイク基板のノイズの高さを引いた dB。静かなときが +0、+30dB から右は黒い帯）。下に補正後の数字 | MAX9814 |
 | **12: Light** | 猫の目（明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面が黒くなる）。下に照度の数字 | VEML7700 |
 
-画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
+画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
 
 ---
 
@@ -164,7 +164,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面1: Climate
   true,   // 画面2: Ambience
   true,   // 画面3: Gas Sensor
-  false,  // 画面4: Date & Time (無効)
+  true,   // 画面4: Time
   true,   // 画面5: Month Day
   true,   // 画面6: WiFi QR
   true,   // 画面7: Climate Modern

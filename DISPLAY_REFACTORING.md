@@ -3,7 +3,7 @@
 > ⚠️ **このドキュメントは当時の設計メモ（履歴）です。** 画面数・関数シグネチャ・行数などは現在のコードと異なります。
 >
 > **現在の設計（要約）**
-> - 画面は **13**（Air Quality / Climate / Ambience / Gas Sensor / Date & Time / Month Day / WiFi QR / Climate Modern / Settings QR / Weather / Pressure / Sound / Light）。`main.cpp` の `NUM_SCREENS` で管理し、有効/無効は設定ページで変更（既定値は `SCREEN_DEFAULT_ENABLED[]`、デフォルトでは Date & Time が無効）。無効な画面はスキップ
+> - 画面は **13**（Air Quality / Climate / Ambience / Gas Sensor / Time / Month Day / WiFi QR / Climate Modern / Settings QR / Weather / Pressure / Sound / Light）。`main.cpp` の `NUM_SCREENS` で管理し、有効/無効は設定ページで変更（既定値は `SCREEN_DEFAULT_ENABLED[]`。デフォルトではすべて有効）。無効な画面はスキップ
 > - 描画関数は `display_screens.cpp` にあり、センサーデータは **引数（`const XxxData&` と有効フラグ）で明示的に渡す**。センサーデータの `extern` 参照はしていない（→ `SENSOR_DATA_PASSING.md`）
 > - `extern` で参照しているのは、`display_screens.h` の `display` オブジェクトのみ
 > - `switch(display_mode)` の `default` は何もしない。画面送りは `switch` の後で「次の有効な画面」へ進める

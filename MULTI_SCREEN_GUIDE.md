@@ -6,7 +6,7 @@ ESP32-C3 + e-paper ディスプレイが **13の画面を10秒ごと（設定ペ
 
 - 画面は `src/main.cpp` の `NUM_SCREENS`（= 13）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
 - 無効な画面はスキップされ、次の有効な画面が表示される（`isScreenEnabled()` / `nextEnabledScreen()`）
-- デフォルトでは **画面4: Date & Time だけが無効**（12画面をローテーション）
+- デフォルトではすべての画面が有効（13画面をローテーション）
 - AP モード中（WiFi に接続できないとき）は、画面6: WiFi QR と画面8: Settings QR だけを交互に表示する
 - 各画面の描画関数は `src/display_screens.cpp` にあり、センサーデータは引数で受け取る（→ `SENSOR_DATA_PASSING.md`）
 
@@ -24,7 +24,8 @@ ESP32-C3 + e-paper ディスプレイが **13の画面を10秒ごと（設定ペ
 │ ↓ 10秒                                      │
 │ 画面3: Gas Sensor       (MICS5524)          │
 │ ↓ 10秒                                      │
-│ (画面4: Date & Time  ※デフォルト無効→スキップ)│
+│ 画面4: Time             (NTP時刻)           │
+│ ↓ 10秒                                      │
 │ 画面5: Month Day        (NTP時刻)           │
 │ ↓ 10秒                                      │
 │ 画面6: WiFi QR          (保存済みの WiFi)   │
@@ -132,18 +133,22 @@ Raw:   67dB
 
 ---
 
-### 📱 **画面4: Date & Time（日時）** - `displayDateTime()` ※デフォルト無効
+### 📱 **画面4: Time（パタパタ時計）** - `displayTime()`
 ```
-Date & Time
-2026-10-16 12:34:56
-WiFi: Connected
+ ╭─────────╮ ╭─────────╮
+ │  1   5  │ │  4   2  │
+■┿━━━━━━━━━┿■┿━━━━━━━━━┿■
+ │  1   5  │ │  4   2  │
+ ╰─────────╯ ╰─────────╯
+   ▐▌               ▐▌
+ ━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 **表示内容:**
-- NTP 同期した現在時刻（JST, `getCurrentDateTime()`）
-- WiFi 接続状態（`isWiFiConnected()`）
-
-使う場合は設定ページで画面4を ON にします。
+- NTP 同期した現在時刻の時と分（24時間表示、2桁ゼロ埋め）を、黒い札2枚に白い丸ゴシック風の数字で描く
+- 札の真ん中の切れ目、左右の蝶番、下のスタンドでパタパタ時計に見せる
+- NTP で時刻が合う前は「??」「??」
+- 詳しくは [TIME_SCREEN.md](TIME_SCREEN.md)
 
 ---
 
@@ -260,7 +265,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面1: Climate (温熱環境)
   true,   // 画面2: Ambience (視聴覚環境)
   true,   // 画面3: Gas Sensor (ガスセンサー)
-  false,  // 画面4: Date & Time (日時表示)
+  true,   // 画面4: Time (パタパタ時計)
   true,   // 画面5: Month Day (月日表示)
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
@@ -335,7 +340,7 @@ case 13:
 📺 画面: Screen 4/10
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 6/10     ← Screen 5/10（Date & Time）は無効なのでスキップ
+📺 画面: Screen 6/10     ← Screen 5/10 を設定ページで無効にしているのでスキップ
 ...
 ```
 

@@ -682,26 +682,54 @@ void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled) {
 }
 
 // ============================================================================
-// 画面4: 日時表示（NTP同期時刻）
+// 画面4: Time（パタパタ時計）
 // ============================================================================
-void displayDateTime(bool isWiFiConnected, const String& dateTimeStr) {
-  display.setTextSize(1);
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(30, 30);
-  display.setFont(&FreeSans12pt7b);
-  display.println("Date & Time");
-  
-  display.setCursor(10, 80);
-  display.setFont(&FreeSans18pt7b);
-  display.println(dateTimeStr);
-  
-  display.setCursor(20, 130);
-  display.setFont(&FreeSans9pt7b);
-  if (isWiFiConnected) {
-    display.println("WiFi: Connected");
-  } else {
-    display.println("WiFi: Not Connected");
-  }
+// 黒い札2枚に、時と分を白い丸ゴシック風の数字で描く（15:42 → [15] [42]。24時間表示で0埋め）。
+// 札の真ん中に白い切れ目、左右に蝶番、下にスタンドを描いてパタパタ時計に見せる。
+// 数字は月日画面と同じ drawGlyph()。NTP で時刻が合う前は「??」を出す
+
+#define FLIP_CARD_Y 30         // 札の上端
+#define FLIP_CARD_W 91
+#define FLIP_CARD_H 130
+#define FLIP_CARD_R 10         // 札の角の丸み
+#define FLIP_DIGIT_W 36        // 数字の外形の幅（px）
+#define FLIP_DIGIT_H 84        // 数字の外形の高さ（px）
+#define FLIP_DIGIT_PEN_R 6     // ペンの半径（線の太さは 2r+1 = 13px）
+#define FLIP_DIGIT_LEFT 6      // 札の左端から1桁目の左端まで
+#define FLIP_DIGIT_PITCH 43    // 1桁目の左端から2桁目の左端まで
+#define FLIP_SPLIT_H 3         // 札の真ん中の切れ目の太さ
+#define FLIP_HINGE_W 4         // 蝶番（札の左右に出る黒い四角）
+#define FLIP_HINGE_H 16
+
+// 札の左端（左が時、右が分。画面の真ん中をはさんで左右対称）
+static const int16_t FLIP_CARD_X[2] = {6, 103};
+
+// 札を1枚描く。value は 0〜99 の2桁の値（負なら「??」）
+static void drawFlipCard(int16_t x, int value) {
+  display.fillRoundRect(x, FLIP_CARD_Y, FLIP_CARD_W, FLIP_CARD_H, FLIP_CARD_R, GxEPD_BLACK);
+
+  int16_t top = FLIP_CARD_Y + (FLIP_CARD_H - FLIP_DIGIT_H) / 2;
+  int tens = value < 0 ? GLYPH_QUESTION : value / 10;
+  int ones = value < 0 ? GLYPH_QUESTION : value % 10;
+  drawGlyph(tens, x + FLIP_DIGIT_LEFT, top, FLIP_DIGIT_W, FLIP_DIGIT_H, FLIP_DIGIT_PEN_R, 0, GxEPD_WHITE);
+  drawGlyph(ones, x + FLIP_DIGIT_LEFT + FLIP_DIGIT_PITCH, top, FLIP_DIGIT_W, FLIP_DIGIT_H, FLIP_DIGIT_PEN_R, 0,
+            GxEPD_WHITE);
+
+  // 真ん中の切れ目と、左右の蝶番
+  int16_t mid = FLIP_CARD_Y + FLIP_CARD_H / 2;
+  display.fillRect(x, mid - FLIP_SPLIT_H / 2, FLIP_CARD_W, FLIP_SPLIT_H, GxEPD_WHITE);
+  display.fillRect(x - FLIP_HINGE_W, mid - FLIP_HINGE_H / 2, FLIP_HINGE_W, FLIP_HINGE_H, GxEPD_BLACK);
+  display.fillRect(x + FLIP_CARD_W, mid - FLIP_HINGE_H / 2, FLIP_HINGE_W, FLIP_HINGE_H, GxEPD_BLACK);
+}
+
+void displayTime(int hour, int minute, bool synced) {
+  drawFlipCard(FLIP_CARD_X[0], synced ? hour : -1);
+  drawFlipCard(FLIP_CARD_X[1], synced ? minute : -1);
+
+  // スタンド（2本の脚と横長の台）
+  display.fillRect(26, 160, 10, 10, GxEPD_BLACK);
+  display.fillRect(164, 160, 10, 10, GxEPD_BLACK);
+  display.fillRoundRect(10, 168, 180, 6, 3, GxEPD_BLACK);
 }
 
 // ============================================================================

@@ -147,7 +147,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面1: Climate (温熱環境)
   true,   // 画面2: Ambience (視聴覚環境)
   true,   // 画面3: Gas Sensor (ガスセンサー)
-  false,  // 画面4: Date & Time (日時表示)
+  true,   // 画面4: Time (パタパタ時計)
   true,   // 画面5: Month Day (月日表示)
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
@@ -164,7 +164,7 @@ const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "Climate（温熱環境）",
   "Ambience（視聴覚環境）",
   "Gas Sensor（ガスセンサー）",
-  "Date & Time（日時）",
+  "Time（時刻 パタパタ時計）",
   "Month Day（月日）",
   "WiFi QR",
   "Climate Modern（温湿度グラフ）",
@@ -798,9 +798,14 @@ void loop() {
         case 3:
           displayGasSensor(mics5524_data, sensor_mics5524_enabled);
           break;
-        case 4:
-          displayDateTime(isWiFiConnected(), getCurrentDateTime());
+        case 4: {
+          // Time（パタパタ時計。NTP で時刻が合う前は「??」）
+          time_t now = time(nullptr);
+          struct tm timeinfo;
+          localtime_r(&now, &timeinfo);
+          displayTime(timeinfo.tm_hour, timeinfo.tm_min, isTimeSynced());
           break;
+        }
         case 5: {
           // 月日表示画面
           time_t now = time(nullptr);
