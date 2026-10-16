@@ -322,7 +322,7 @@ display.println("Humidity: 65%");
 - フォントデータは **フラッシュ（PROGMEM）** に置かれ、RAM はほとんど使いません
 - ファームウェアに入るのは `setFont()` で実際に参照したフォントだけです。インクルードしただけで使っていないフォントはビルド時に取り除かれます
 - 大きいフォント（24pt など）ほどデータが大きくなります
-- 同じ GFX フォントを複数の `.cpp` で使うと、ファイルごとにコピーが入ります。そのため `main.cpp` では全画面共通の `FreeMonoBold12pt7b` だけを使い、`display_screens.cpp` ではこのフォントを使いません（以前は `FreeSans12pt7b` が両方に入っていて、約 2.7KB 余分でした）
+- 同じ GFX フォントを複数の `.cpp` で使うと、ファイルごとにコピーが入ります。そのため `main.cpp` では全画面共通の `FreeMonoBold12pt7b` だけを使い、`display_screens.cpp` ではこのフォントを読み込みません（Gas Sensor 画面のように使う画面は、`main.cpp` で設定済みのものをそのまま使う。以前は `FreeSans12pt7b` が両方に入っていて、約 2.7KB 余分でした）
 - U8g2 の日本語フォントは大きい（例: `u8g2_font_unifont_t_japanese1` で約 47KB）ので、必要なものだけ使ってください
 
 ---
