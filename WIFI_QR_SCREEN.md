@@ -159,7 +159,7 @@ case SCREEN_SETTINGS_QR:
 | 0 | Air Quality | eCO2, TVOC, AQI | 有効 |
 | 1 | Climate | 温度, 湿度, 気圧, 高度 | 有効 |
 | 2 | Ambience | 照度, 騒音レベル | 有効 |
-| 3 | Gas Sensor | Rs/Ro（起動後3分間は Warming up） | 有効 |
+| 3 | Gas Sensor | カナリアと HP ゲージ（起動後3分間は卵） | 有効 |
 | 4 | Date & Time | 日時表示（フル） | **無効** |
 | 5 | Month Day | 月・日のみ | 有効 |
 | 6 | **WiFi QR** | WiFi の QRコード | 有効 |

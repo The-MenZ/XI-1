@@ -84,7 +84,7 @@ void CustomMICS5524::calibrate() {
 }
 
 MICS5524Data CustomMICS5524::read() {
-    MICS5524Data data = {0, 0.0f, 0.0f, 0.0f, 0.0f, false, false};
+    MICS5524Data data = {0, 0.0f, 0.0f, 0.0f, 0.0f, false, false, 0.0f, 0.0f};
 
     // Sampling
     long sum_raw = 0;
@@ -135,7 +135,14 @@ MICS5524Data CustomMICS5524::read() {
         if (ppm < 1.0f) ppm = 0.0f;
         if (ppm > 1000.0f) ppm = 1000.0f;
         data.ppm_equivalent = ppm;
+
+        // ADC で測れる上限の電圧のときの Rs。ガスがこれより濃くても Rs はここで頭打ちになる
+        float v_max = adcRawToVolts(4095);
+        data.rs_ro_min = LOAD_RESISTANCE * (CIRCUIT_VOLTAGE - v_max) / v_max / Ro;
     }
+
+    unsigned long elapsed = millis() - heater_on_time;
+    data.warmup_progress = elapsed >= WARMUP_MS ? 1.0f : (float)elapsed / WARMUP_MS;
 
     // Heater status
     data.heater_enabled = (HEATER_PIN >= 0) && (digitalRead(HEATER_PIN) == LOW);
