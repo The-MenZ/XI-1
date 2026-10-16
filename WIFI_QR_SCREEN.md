@@ -165,6 +165,7 @@ case SCREEN_SETTINGS_QR:
 | 6 | **WiFi QR** | WiFi の QRコード | 有効 |
 | 7 | Climate Modern | 温湿度の円形ゲージ＋過去24時間グラフ | 有効 |
 | 8 | **Settings QR** | 設定ページの QRコード | 有効 |
+| 9 | Weather | 今の天気と今日・明日の予報 | 有効 |
 
 AP モード中は設定に関係なく、画面6（AP の WiFi QR）と画面8（設定ページ QR）だけを交互に表示します。
 
@@ -190,6 +191,8 @@ WiFi QR
 Climate Modern
     ↓ 10秒
 Settings QR
+    ↓ 10秒
+Weather
     ↓ 10秒
 [リピート]
 ```

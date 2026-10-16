@@ -14,12 +14,13 @@
 | フォント | 種類 | 使用箇所 |
 |---------|------|---------|
 | `FreeMonoBold12pt7b` | Adafruit GFX | 全画面共通の既定フォント（`main.cpp` の `loop()` で設定）。Air Quality / Climate / Ambience / Gas Sensor 画面 |
-| `FreeSans12pt7b` | Adafruit GFX | 起動時のテスト表示（`main.cpp` の `setup()`）、Date & Time のタイトル |
+| `FreeSans12pt7b` | Adafruit GFX | 起動時のテスト表示（`main.cpp` の `setup()`）、Date & Time のタイトル、Weather の未取得時の表示 |
 | `FreeSans18pt7b` | Adafruit GFX | Date & Time の日時 |
-| `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示 |
-| `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度（大きな数字） |
+| `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示、Weather の未取得時の表示 |
+| `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度、Weather の今の気温（大きな数字） |
 | `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度 |
-| `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY） |
+| `u8g2_font_helvB12_tf` | U8g2 | Weather の天気の名前・°C・日付・最高/最低気温 |
+| `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY）、Weather の取得時刻・降水確率 |
 
 ※ Month Day 画面の数字はフォントを使わず、`display_screens.cpp` の中で直線と楕円弧を丸いペンでなぞって描いています（`MONTHDAY_SCREEN.md` 参照）。
 ※ Date & Time 画面は既定で無効（`SCREEN_DEFAULT_ENABLED[4] = false`。設定ページで ON にできる）です。
@@ -172,7 +173,8 @@ u8g2Fonts.print("%");
 |--------------|------|----------------------|
 | `u8g2_font_logisoso42_tn` | 高さ 42px の数字（`_tn` = 数字と一部記号のみ） | 温度の大きな数字 |
 | `u8g2_font_helvB18_tf` | Helvetica Bold 18（`_tf` = ASCII＋Latin-1） | 湿度 |
-| `u8g2_font_helvR08_tf` | Helvetica Regular 8（`_tf`） | グラフのラベル |
+| `u8g2_font_helvB12_tf` | Helvetica Bold 12（`_tf`） | 天気画面の文字（`°` を含む） |
+| `u8g2_font_helvR08_tf` | Helvetica Regular 8（`_tf`） | グラフのラベル、天気画面の小さい文字 |
 
 - `print()` は UTF-8 を解釈するので、`_tf` フォントなら `°` なども表示できます
 - 日本語フォント（`u8g2_font_b16_t_japanese3` など）もあります。表示テストは `src/u8g2_gfx_font_test.cpp`（`pio run -e esp32-c3-super-mini-k2-u8g2gfx -t upload`）

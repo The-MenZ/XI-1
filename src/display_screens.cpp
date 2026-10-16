@@ -502,24 +502,28 @@ void displaySettingsQR(const String& url) {
   drawQRCode(url, ICON_GEAR);
 }
 
+// U8g2 フォントで描くためのオブジェクト（画面7: Climate Modern と画面9: Weather で共用）
+static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
+
+static void beginU8g2Fonts() {
+  static bool initialized = false;
+  if (!initialized) {
+    u8g2Fonts.begin(display);
+    initialized = true;
+  }
+}
+
 // ============================================================================
 // 画面7: Climate Modern (温度/湿度モダンデザイン)
 // ============================================================================
 void displayClimateModern(
   const AHT21Data& aht21_data, bool aht21_enabled,
   const BMP280Data& bmp280_data, bool bmp280_enabled,
-  const float* temp_history, const float* humid_history, 
+  const float* temp_history, const float* humid_history,
   int history_count, int history_index
 ) {
-  // U8g2フォント用のオブジェクト作成
-  static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
-  static bool u8g2_initialized = false;
-  
-  if (!u8g2_initialized) {
-    u8g2Fonts.begin(display);
-    u8g2_initialized = true;
-  }
-  
+  beginU8g2Fonts();
+
   // センサーデータチェック
   if (!aht21_enabled && !bmp280_enabled) {
     display.setCursor(2, 56);
@@ -744,6 +748,278 @@ void displayClimateModern(
         
         display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
       }
+    }
+  }
+}
+
+
+// ============================================================================
+// 画面9: Weather（天気）
+// ============================================================================
+// アイコンは画像を持たずに図形で描く。ESP32-C3 には FPU がないので座標は整数で計算する
+
+// 天気の種類（アイコンの描き分け。WEATHER_FOG 以降は雲の下に何か描く）
+enum WeatherKind {
+  WEATHER_CLEAR,
+  WEATHER_PARTLY_CLOUDY,
+  WEATHER_CLOUDY,
+  WEATHER_FOG,
+  WEATHER_RAIN,
+  WEATHER_SNOW,
+  WEATHER_THUNDER,
+};
+
+// WMO 天気コードを天気の種類と表示名にする
+// （コードの一覧: https://open-meteo.com/en/docs の「WMO Weather interpretation codes」）
+static WeatherKind weatherKind(int code, const char** label) {
+  if (code <= 1) {
+    *label = code == 0 ? "Clear" : "Mostly Clear";
+    return WEATHER_CLEAR;
+  }
+  if (code == 2) {
+    *label = "Partly Cloudy";
+    return WEATHER_PARTLY_CLOUDY;
+  }
+  if (code == 3) {
+    *label = "Cloudy";
+    return WEATHER_CLOUDY;
+  }
+  if (code <= 48) {
+    *label = "Fog";
+    return WEATHER_FOG;
+  }
+  if (code <= 57) {
+    *label = "Drizzle";
+    return WEATHER_RAIN;
+  }
+  if (code <= 67) {
+    *label = "Rain";
+    return WEATHER_RAIN;
+  }
+  if (code <= 77) {
+    *label = "Snow";
+    return WEATHER_SNOW;
+  }
+  if (code <= 82) {
+    *label = "Showers";
+    return WEATHER_RAIN;
+  }
+  if (code <= 86) {
+    *label = "Snow Showers";
+    return WEATHER_SNOW;
+  }
+  *label = "Thunderstorm";
+  return WEATHER_THUNDER;
+}
+
+// アイコンの寸法は大きさの単位 u の 10分の k で決める
+#define U(k) ((int16_t)(u * (k) / 10))
+
+// 2px の太さの線
+static void drawThickLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
+  display.drawLine(x0, y0, x1, y1, GxEPD_BLACK);
+  display.drawLine(x0 + 1, y0, x1 + 1, y1, GxEPD_BLACK);
+  display.drawLine(x0, y0 + 1, x1, y1 + 1, GxEPD_BLACK);
+}
+
+// 45°ごとの8方向（×10）
+static const int8_t DIR8[8][2] = {{10, 0}, {7, 7}, {0, 10}, {-7, 7}, {-10, 0}, {-7, -7}, {0, -10}, {7, -7}};
+
+// 太陽（r = 光線の先までの半径）
+static void drawSun(int16_t cx, int16_t cy, int16_t r) {
+  display.fillCircle(cx, cy, r / 2, GxEPD_BLACK);
+  for (int i = 0; i < 8; i++) {
+    drawThickLine(cx + DIR8[i][0] * r * 7 / 100, cy + DIR8[i][1] * r * 7 / 100,
+                  cx + DIR8[i][0] * r / 10, cy + DIR8[i][1] * r / 10);
+  }
+}
+
+// 三日月（r = 半径）
+static void drawMoon(int16_t cx, int16_t cy, int16_t r) {
+  display.fillCircle(cx, cy, r, GxEPD_BLACK);
+  display.fillCircle(cx + r / 2, cy - r * 35 / 100, r * 8 / 10, GxEPD_WHITE);
+}
+
+// 雲の形を塗る（grow だけ大きく）。(cx, by) は雲の底の中央（雲の幅は 5u、高さは 3.2u）
+static void fillCloud(int16_t cx, int16_t by, int16_t u, int16_t grow, uint16_t color) {
+  display.fillCircle(cx - U(14), by - U(10), U(10) + grow, color);
+  display.fillCircle(cx - U(2), by - U(16), U(16) + grow, color);
+  display.fillCircle(cx + U(15), by - U(11), U(11) + grow, color);
+  display.fillRect(cx - U(14), by - U(11), U(29), U(11) + grow, color);
+}
+
+// 雲（白抜きで輪郭だけ。後ろの太陽や月は隠す）
+static void drawCloud(int16_t cx, int16_t by, int16_t u) {
+  fillCloud(cx, by, u, 2, GxEPD_BLACK);
+  fillCloud(cx, by, u, 0, GxEPD_WHITE);
+}
+
+// 天気アイコンを (cx, cy) を中心に描く（約 5u 四方）
+static void drawWeatherIcon(int16_t cx, int16_t cy, int16_t u, WeatherKind kind, bool is_day) {
+  if (kind == WEATHER_CLEAR) {
+    if (is_day) {
+      drawSun(cx, cy, U(24));
+    } else {
+      drawMoon(cx, cy, U(17));
+    }
+    return;
+  }
+
+  if (kind == WEATHER_PARTLY_CLOUDY) {
+    // 左上に太陽（夜は月）、右下に少し小さい雲
+    if (is_day) {
+      drawSun(cx - U(9), cy - U(6), U(18));
+    } else {
+      drawMoon(cx - U(9), cy - U(8), U(13));
+    }
+    drawCloud(cx + U(5), cy + U(21), u * 85 / 100);
+    return;
+  }
+
+  // 雨や雪などは雲の下に描くので、そのぶん雲を上に置く
+  int16_t by = kind >= WEATHER_FOG ? cy + U(7) : cy + U(16);
+  drawCloud(cx, by, u);
+
+  switch (kind) {
+    case WEATHER_FOG:
+      drawThickLine(cx - U(22), by + U(6), cx + U(18), by + U(6));
+      drawThickLine(cx - U(16), by + U(13), cx + U(24), by + U(13));
+      break;
+    case WEATHER_RAIN:
+      for (int i = -1; i <= 1; i++) {
+        int16_t x = cx + i * U(13);
+        drawThickLine(x + U(3), by + U(4), x - U(3), by + U(15));
+      }
+      break;
+    case WEATHER_SNOW:
+      // 雪の結晶（線を60°ずつ3本）
+      for (int i = -1; i <= 1; i++) {
+        int16_t x = cx + i * U(13);
+        int16_t y = by + U(10);
+        int16_t s = U(5);
+        int16_t sy = s * 87 / 100;
+        drawThickLine(x - s, y, x + s, y);
+        drawThickLine(x - s / 2, y - sy, x + s / 2, y + sy);
+        drawThickLine(x - s / 2, y + sy, x + s / 2, y - sy);
+      }
+      break;
+    case WEATHER_THUNDER:
+      // 稲妻（ジグザグ）
+      drawThickLine(cx + U(5), by + U(3), cx - U(4), by + U(12));
+      drawThickLine(cx - U(4), by + U(12), cx + U(4), by + U(12));
+      drawThickLine(cx + U(4), by + U(12), cx - U(5), by + U(22));
+      break;
+    default:
+      break;
+  }
+}
+
+#undef U
+
+// 曜日（0 = 日曜）。Sakamoto の方法（mktime より軽い）
+static int dayOfWeek(int y, int m, int d) {
+  static const uint8_t t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+  if (m < 3) {
+    y--;
+  }
+  return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+// U8g2 フォントで text を cx を中心に描く（y はベースライン）
+static void printCentered(const char* text, int16_t cx, int16_t y) {
+  u8g2Fonts.setCursor(cx - u8g2Fonts.getUTF8Width(text) / 2, y);
+  u8g2Fonts.print(text);
+}
+
+void displayWeather(const WeatherData& weather, bool has_location, bool wifi_connected) {
+  if (!has_location || !weather.valid) {
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(20, 80);
+    display.print("Weather");
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(20, 110);
+    if (!has_location) {
+      display.print("Set the location");
+      display.setCursor(20, 130);
+      display.print("on the settings page");
+    } else if (!wifi_connected) {
+      display.print("WiFi: Not Connected");
+    } else {
+      display.print("Loading...");
+    }
+    return;
+  }
+
+  beginU8g2Fonts();
+  u8g2Fonts.setFontMode(1);  // 文字の背景は塗らない
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
+  u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
+
+  // ===== 上半分：今の天気 =====
+  // 1行目: 天気の名前（左）と取得した時刻（右）
+  const char* label;
+  WeatherKind kind = weatherKind(weather.code, &label);
+  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  u8g2Fonts.setCursor(4, 15);
+  u8g2Fonts.print(label);
+
+  if (weather.fetched_at != 0) {
+    struct tm t;
+    localtime_r(&weather.fetched_at, &t);
+    char updated[16];
+    strftime(updated, sizeof(updated), "Updated %H:%M", &t);
+    u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+    u8g2Fonts.setCursor(196 - u8g2Fonts.getUTF8Width(updated), 13);
+    u8g2Fonts.print(updated);
+  }
+
+  drawWeatherIcon(48, 60, 13, kind, weather.is_day);
+
+  // 気温（整数）と °C を右の列の中央に
+  char text[20];
+  snprintf(text, sizeof(text), "%ld", lroundf(weather.temp));
+  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);
+  int16_t temp_w = u8g2Fonts.getUTF8Width(text);
+  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  int16_t x = 144 - (temp_w + 2 + u8g2Fonts.getUTF8Width("°C")) / 2;
+  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);
+  u8g2Fonts.setCursor(x, 84);
+  u8g2Fonts.print(text);
+  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  u8g2Fonts.setCursor(x + temp_w + 2, 56);
+  u8g2Fonts.print("°C");
+
+  display.drawFastHLine(6, 104, 188, GxEPD_BLACK);
+  display.drawFastVLine(100, 110, 84, GxEPD_BLACK);
+
+  // ===== 下半分：今日（左）と明日（右）の予報 =====
+  static const char* const WEEKDAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  for (int i = 0; i < 2; i++) {
+    const WeatherDay& day = weather.days[i];
+    int16_t cx = 50 + i * 100;
+
+    // 日付（例: 10/17 Sat。date は YYYY-MM-DD）
+    int month = atoi(day.date + 5);
+    int mday = atoi(day.date + 8);
+    if (month >= 1 && month <= 12) {
+      snprintf(text, sizeof(text), "%d/%d %s", month, mday, WEEKDAYS[dayOfWeek(atoi(day.date), month, mday)]);
+      u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+      printCentered(text, cx, 121);
+    }
+
+    const char* day_label;
+    drawWeatherIcon(cx, 146, 8, weatherKind(day.code, &day_label), true);
+
+    // 最高 / 最低気温
+    snprintf(text, sizeof(text), "%ld° / %ld°", lroundf(day.temp_max), lroundf(day.temp_min));
+    u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+    printCentered(text, cx, 184);
+
+    if (day.precip_prob >= 0) {
+      snprintf(text, sizeof(text), "Rain %d%%", day.precip_prob);
+      u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+      printCentered(text, cx, 197);
     }
   }
 }
