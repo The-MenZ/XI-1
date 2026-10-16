@@ -21,6 +21,7 @@ struct Settings {
   String weather_lat;     // 天気の地域の緯度・経度（10進数の文字列のまま API に渡す。未設定なら空）
   String weather_lon;
   int16_t altitude_m;     // 設置場所の標高（m）。気圧を海面の高さに換算するのに使う
+  int16_t mic_floor_db;   // 騒音レベルから引く値（dB）。マイク基板のノイズの高さ（静かなときの騒音レベル）
 };
 
 extern Settings settings;
@@ -37,6 +38,10 @@ inline bool hasWeatherLocation() {
 // 設置場所の標高の範囲（m）
 #define ALTITUDE_M_MIN -500
 #define ALTITUDE_M_MAX 4000
+
+// 騒音レベルから引く値の範囲（dB）
+#define MIC_FLOOR_DB_MIN 0
+#define MIC_FLOOR_DB_MAX 100
 
 // NVS から読み込む（画面の既定値と画面数は、画面定義を持つ main.cpp から渡す）
 // 保存したときより画面が増えていたら、増えた画面は既定値を使う

@@ -70,4 +70,8 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
 // trend_3h: 約3時間前からの気圧の変化（hPa）。履歴が3時間分たまるまでは NAN（傾向のバッジを出さない）
 void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float trend_3h);
 
+// 画面11: Sound（レトロな VU メーター）
+// 針は補正後の騒音（マイク基板のノイズの高さを引いた dB、+0〜+40）。+30dB から右は黒い帯（うるさい）
+void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);
+
 #endif // DISPLAY_SCREENS_H

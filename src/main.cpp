@@ -138,7 +138,7 @@ uint8_t pressure_history_count = 0;
 // 無効な画面はスキップして次の有効な画面を表示します
 // ============================================================================
 // 画面の番号は NVS に保存した screen_mask のビット位置なので、新しい画面は末尾に足す
-#define NUM_SCREENS 11
+#define NUM_SCREENS 12
 #define SCREEN_WIFI_QR 6
 #define SCREEN_SETTINGS_QR 8
 #define SCREEN_WEATHER 9
@@ -154,6 +154,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面8: Settings QR Code (設定ページの URL)
   true,   // 画面9: Weather (天気。地域は設定ページで選ぶ)
   true,   // 画面10: Pressure (天気図風の H/L と等圧線)
+  true,   // 画面11: Sound (レトロな VU メーター)
 };
 
 // 設定ページのチェックボックスに出す画面名
@@ -169,6 +170,7 @@ const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "Settings QR（設定ページ）",
   "Weather（天気）",
   "Pressure（気圧 H/L）",
+  "Sound（騒音 VU メーター）",
 };
 
 uint16_t defaultScreenMask() {
@@ -549,7 +551,10 @@ void loop() {
       veml7700_data = veml7700.read();
     }
     if (sensor_max9814_enabled) {
+      // 設定ページで引く値を変えたらすぐ反映されるよう、毎回渡す
+      max9814.setNoiseFloor(settings.mic_floor_db);
       max9814_data = max9814.read();
+      current_sound_db = max9814_data.db_level;  // 設定ページに「今の騒音レベル」として出す
     }
     if (sensor_mics5524_enabled) {
       // ヒーターが温まったら一度だけ新鮮な空気の基準値（Ro）を取る
@@ -686,9 +691,11 @@ void loop() {
         Serial.print(max9814_data.peak_to_peak, 3);
         Serial.println(" V");
         
-        Serial.print("  🔊 マイク(MAX9814)RMS: ");
+        Serial.print("  🔊 マイク(MAX9814)RMS（200Hz 未満を切った後）: ");
         Serial.print(max9814_data.rms_voltage, 4);
-        Serial.println(" V");
+        Serial.print(" V（サンプリング ");
+        Serial.print(max9814_data.sample_rate, 0);
+        Serial.println(" Hz）");
         
         Serial.print("  🔊 騒音レベル（測定値）: ");
         Serial.print(max9814_data.db_level_raw, 1);
@@ -697,6 +704,12 @@ void loop() {
         Serial.print("  🔊 騒音レベル（中央値）: ");
         Serial.print(max9814_data.db_level, 1);
         Serial.println(" dB");
+
+        Serial.print("  🔊 騒音レベル（補正後）: +");
+        Serial.print(max9814_data.db_above_floor, 1);
+        Serial.print(" dB（引く値 ");  // マイク基板のノイズの高さ（設定ページで変えられる）
+        Serial.print(settings.mic_floor_db);
+        Serial.println(" dB）");
       }
       
       // MICS5524
@@ -819,6 +832,10 @@ void loop() {
         case 10:
           // Pressure（天気図風の H/L と等圧線、3時間の傾向）
           displayPressure(bmp280_data, sensor_bmp280_enabled, pressureTrend3h(bmp280_data.pressure));
+          break;
+        case 11:
+          // Sound（レトロな VU メーター。針は補正後の騒音）
+          displaySound(max9814_data, sensor_max9814_enabled);
           break;
         default:
           // 無効な画面モード（デフォルトケース）
