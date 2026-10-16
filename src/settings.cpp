@@ -40,6 +40,9 @@ void loadSettings(uint16_t default_screen_mask, uint8_t num_screens) {
   settings.interval_sec = prefs.getUShort("interval", DEFAULT_INTERVAL_SEC);
   settings.ntp_server = prefs.getString("ntp", DEFAULT_NTP_SERVER);
   settings.timezone = prefs.getString("tz", DEFAULT_TIMEZONE);
+  settings.weather_place = prefs.getString("w_place", "");
+  settings.weather_lat = prefs.getString("w_lat", "");
+  settings.weather_lon = prefs.getString("w_lon", "");
   prefs.end();
 
   settings.interval_sec = constrain(settings.interval_sec, INTERVAL_SEC_MIN, INTERVAL_SEC_MAX);
@@ -55,6 +58,9 @@ void saveSettings() {
   prefs.putUShort("interval", settings.interval_sec);
   prefs.putString("ntp", settings.ntp_server);
   prefs.putString("tz", settings.timezone);
+  prefs.putString("w_place", settings.weather_place);
+  prefs.putString("w_lat", settings.weather_lat);
+  prefs.putString("w_lon", settings.weather_lon);
   prefs.end();
 }
 

@@ -2,11 +2,11 @@
 
 ## 📱 機能概要
 
-ESP32-C3 + e-paper ディスプレイが **9つの画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
+ESP32-C3 + e-paper ディスプレイが **10の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
 
-- 画面は `src/main.cpp` の `NUM_SCREENS`（= 9）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
+- 画面は `src/main.cpp` の `NUM_SCREENS`（= 10）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
 - 無効な画面はスキップされ、次の有効な画面が表示される（`isScreenEnabled()` / `nextEnabledScreen()`）
-- デフォルトでは **画面4: Date & Time だけが無効**（8画面をローテーション）
+- デフォルトでは **画面4: Date & Time だけが無効**（9画面をローテーション）
 - AP モード中（WiFi に接続できないとき）は、画面6: WiFi QR と画面8: Settings QR だけを交互に表示する
 - 各画面の描画関数は `src/display_screens.cpp` にあり、センサーデータは引数で受け取る（→ `SENSOR_DATA_PASSING.md`）
 
@@ -32,11 +32,13 @@ ESP32-C3 + e-paper ディスプレイが **9つの画面を10秒ごと（設定�
 │ 画面7: Climate Modern   (AHT21 / BMP280)    │
 │ ↓ 10秒                                      │
 │ 画面8: Settings QR      (本体の IP)         │
+│ ↓ 10秒                                      │
+│ 画面9: Weather          (Open-Meteo)        │
 │ ↓ 10秒 (画面0へループ)                      │
 └─────────────────────────────────────────────┘
 ```
 
-画面番号は `display_mode` の値（0〜8）です。シリアル出力では `Screen 1/9`〜`Screen 9/9`（`display_mode + 1`）と表示されます。
+画面番号は `display_mode` の値（0〜9）です。シリアル出力では `Screen 1/10`〜`Screen 10/10`（`display_mode + 1`）と表示されます。
 
 ---
 
@@ -180,6 +182,18 @@ HUMIDITY
 
 ---
 
+### 📱 **画面9: Weather（天気）** - `displayWeather()`
+
+設定ページで選んだ地域の天気を表示します（Open-Meteo から30分ごとに取得）。
+
+- 上半分: 今の天気の名前（左上）、取得した時刻（右上）、天気アイコン、今の気温
+- 下半分: 今日（左）と明日（右）の日付・天気アイコン・最高/最低気温・降水確率
+- 地域が未設定なら "Set the location on the settings page"、まだ取得できていなければ "Loading..."（WiFi 切断中は "WiFi: Not Connected"）
+
+詳細は `WEATHER_SCREEN.md`。
+
+---
+
 ## 🔧 カスタマイズ
 
 ### 1. 画面の有効/無効を切り替える
@@ -189,7 +203,7 @@ HUMIDITY
 保存する前（初回起動時・初期化後）の既定値は `src/main.cpp` の `SCREEN_DEFAULT_ENABLED` です。
 
 ```cpp
-#define NUM_SCREENS 9
+#define NUM_SCREENS 10
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
@@ -200,6 +214,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
   true,   // 画面8: Settings QR Code (設定ページの URL)
+  true,   // 画面9: Weather (天気。地域は設定ページで選ぶ)
 };
 ```
 
@@ -209,7 +224,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 
 ### 3. 画面の順序を変更
 
-表示順は `display_mode` の番号順（0→8）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
+表示順は `display_mode` の番号順（0→9）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
 
 ### 4. 画面の追加
 
@@ -222,18 +237,18 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 void displayCustom(const AHT21Data& aht21_data, bool aht21_enabled);
 
 // main.cpp
-#define NUM_SCREENS 10
+#define NUM_SCREENS 11
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
-  // ... 既存の9画面 ...
-  true,   // 画面9: Custom
+  // ... 既存の10画面 ...
+  true,   // 画面10: Custom
 };
 const char* const SCREEN_NAMES[NUM_SCREENS] = {
-  // ... 既存の9画面 ...
+  // ... 既存の10画面 ...
   "Custom",
 };
 
 // loop() の switch 内
-case 9:
+case 10:
   displayCustom(aht21_data, sensor_aht21_enabled);
   break;
 ```
@@ -246,7 +261,7 @@ case 9:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 1/9
+📺 画面: Screen 1/10
 📊 センサーデータ更新:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   eCO2: 410 ppm
@@ -259,13 +274,13 @@ case 9:
 
 🔄 初回フルリフレッシュ実行
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 2/9
+📺 画面: Screen 2/10
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 4/9
+📺 画面: Screen 4/10
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 6/9      ← Screen 5/9（Date & Time）は無効なのでスキップ
+📺 画面: Screen 6/10     ← Screen 5/10（Date & Time）は無効なのでスキップ
 ...
 ```
 
@@ -326,7 +341,7 @@ if (current_time - last_update >= settings.interval_sec * 1000UL || first_displa
 **A:** 以下を確認してください
 - [ ] 設定ページで2つ以上の画面が ON になっているか（1つだけだとその画面のまま）
 - [ ] AP モードになっていないか（AP モード中は WiFi QR と Settings QR だけを交互に表示する）
-- [ ] シリアルの `📺 画面: Screen N/9` の番号が進んでいるか
+- [ ] シリアルの `📺 画面: Screen N/10` の番号が進んでいるか
 - [ ] e-paper の配線（特に BUSY）が正しいか
 
 ### Q: 特定の画面だけ表示がおかしい
