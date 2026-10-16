@@ -3,7 +3,6 @@
 #include <SPI.h>
 #include <GxEPD2_BW.h>
 #include <WiFi.h>
-#include <esp_wifi.h>
 #include <time.h>
 #include "Custom_ENS160.h"
 #include "Custom_AHT21.h"
@@ -12,7 +11,9 @@
 #include "Custom_MAX9814.h"
 #include "Custom_MICS5524.h"
 #include "display_screens.h"
-#include "wifi_config.h"
+#include "settings.h"
+#include "network.h"
+#include "web_settings.h"
 
 // ============================================================================
 // GxEPD2 用フォント定義
@@ -30,22 +31,21 @@
 // WiFi + NTP 設定
 // ============================================================================
 
-// NTPサーバー設定（JST: UTC+9）
-#define NTP_SERVER1 "pool.ntp.org"
-#define NTP_SERVER2 "time.nist.gov"
+// NTPサーバーとタイムゾーンは設定ページで変更できる（settings.h）
+// 設定したサーバーが応答しないときの予備
+#define NTP_SERVER_FALLBACK "time.nist.gov"
 
 // これより前の時刻は未同期とみなす（2024-01-01 00:00:00 UTC）
 #define TIME_SYNCED_THRESHOLD 1704067200
 
-// WiFi は切断されても自動で再接続し、NTP も ESP-IDF が定期的に（3時間ごと）
+// WiFi は切断されても自動で再接続し（network.cpp）、NTP も ESP-IDF が定期的に（3時間ごと）
 // 再同期するので、接続状態や同期状態は都度問い合わせる
 
 // ============================================================================
 // 関数プロトタイプ宣言
 // ============================================================================
-void setupWiFi();
 void setupNTP();
-bool isWiFiConnected();
+void applyTimeSettings();
 bool isTimeSynced();
 String getCurrentDateTime();
 
@@ -125,11 +125,14 @@ const unsigned long HISTORY_INTERVAL = 10 * 60 * 1000;  // 10分（ミリ秒）
 // ============================================================================
 // 画面表示の有効/無効設定
 // ============================================================================
-// 各画面の有効/無効をfalseに変更してコメントアウトするだけで、
-// その画面をスキップして次の有効な画面を表示します
+// 各画面の有効/無効は設定ページで変更できる（NVS に保存）
+// ここは設定を保存する前（初回起動時・初期化後）の既定値
+// 無効な画面はスキップして次の有効な画面を表示します
 // ============================================================================
-#define NUM_SCREENS 8
-const bool SCREEN_ENABLED[NUM_SCREENS] = {
+#define NUM_SCREENS 9
+#define SCREEN_WIFI_QR 6
+#define SCREEN_SETTINGS_QR 8
+const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
   true,   // 画面2: Ambience (視聴覚環境)
@@ -138,13 +141,52 @@ const bool SCREEN_ENABLED[NUM_SCREENS] = {
   true,   // 画面5: Month Day (月日表示)
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
+  true,   // 画面8: Settings QR Code (設定ページの URL)
 };
+
+// 設定ページのチェックボックスに出す画面名
+const char* const SCREEN_NAMES[NUM_SCREENS] = {
+  "Air Quality（空気質）",
+  "Climate（温熱環境）",
+  "Ambience（視聴覚環境）",
+  "Gas Sensor（ガスセンサー）",
+  "Date & Time（日時）",
+  "Month Day（月日）",
+  "WiFi QR",
+  "Climate Modern（温湿度グラフ）",
+  "Settings QR（設定ページ）",
+};
+
+uint16_t defaultScreenMask() {
+  uint16_t mask = 0;
+  for (int i = 0; i < NUM_SCREENS; i++) {
+    if (SCREEN_DEFAULT_ENABLED[i]) mask |= 1 << i;
+  }
+  return mask;
+}
+
+// 画面 i を表示するか（AP モード中は WiFi QR と設定ページ QR だけを交互に出す）
+bool isScreenEnabled(uint8_t i) {
+  if (isAPMode()) {
+    return i == SCREEN_WIFI_QR || i == SCREEN_SETTINGS_QR;
+  }
+  return settings.screen_mask & (1 << i);
+}
+
+// current の次に表示する有効な画面（有効な画面がなければ current のまま）
+uint8_t nextEnabledScreen(uint8_t current) {
+  uint8_t next = current;
+  do {
+    next = (next + 1) % NUM_SCREENS;
+  } while (!isScreenEnabled(next) && next != current);
+  return next;
+}
 
 // 有効な画面数を計算
 uint8_t countEnabledScreens() {
   uint8_t count = 0;
   for (int i = 0; i < NUM_SCREENS; i++) {
-    if (SCREEN_ENABLED[i]) count++;
+    if (isScreenEnabled(i)) count++;
   }
   return count;
 }
@@ -160,6 +202,9 @@ void setup() {
   Serial.println("\n=================================================================");
   Serial.println("  ESP32-C3 Super Mini (K2) + WeAct 1.54\" e-paper 起動");
   Serial.println("=================================================================\n");
+  
+  // 設定ページで保存した設定を NVS から読み込む
+  loadSettings(defaultScreenMask(), NUM_SCREENS);
   
   // I2C バス初期化（GPIO8=SDA, GPIO9=SCL）
   Serial.print("📡 I2Cバスを初期化中...");
@@ -332,10 +377,11 @@ void setup() {
   delay(2000);
 
   // ===================================================================
-  // WiFi + NTP 初期化
+  // WiFi + NTP + 設定ページ 初期化
   // ===================================================================
-  setupWiFi();
+  setupNetwork();  // つながらなければ AP モードになる
   setupNTP();
+  setupWebSettings(SCREEN_NAMES, NUM_SCREENS);
   
   // ===================================================================
   // セットアップ完了サマリー
@@ -345,10 +391,14 @@ void setup() {
   Serial.println("=================================================================");
   
   Serial.println("\n📡 WiFi接続状態:");
-  if (isWiFiConnected()) {
+  if (isAPMode()) {
+    Serial.printf("   📶 APモード: %s（パスワードなし）\n", getAPSSID().c_str());
+    Serial.printf("   📶 設定ページ: %s\n", getSettingsURL().c_str());
+  } else if (isWiFiConnected()) {
     Serial.printf("   ✅ SSID: %s\n", WiFi.SSID().c_str());
     Serial.printf("   ✅ IP: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("   ✅ RSSI: %d dBm\n", WiFi.RSSI());
+    Serial.printf("   ✅ 設定ページ: %s\n", getSettingsURL().c_str());
   } else {
     Serial.println("   ⚠️  WiFi未接続（バックグラウンドで再接続を継続）");
   }
@@ -356,7 +406,7 @@ void setup() {
   Serial.println("\n🕐 NTP時刻同期状態:");
   if (isTimeSynced()) {
     Serial.println("   ✅ 同期済み");
-    Serial.printf("   ✅ 現在時刻: %s JST\n", getCurrentDateTime().c_str());
+    Serial.printf("   ✅ 現在時刻: %s (%s)\n", getCurrentDateTime().c_str(), settings.timezone.c_str());
   } else {
     Serial.println("   ⚠️  未同期（WiFi接続後に自動で同期）");
   }
@@ -420,9 +470,18 @@ void loop() {
   
   const unsigned long FULL_REFRESH_INTERVAL = 10 * 60 * 1000;  // 10分
 
-  // 10秒ごとにセンサー値取得 & 画面更新
-  if (current_time - last_update >= 10000 || first_display) {
+  // WiFi の監視（つながらなければ AP モードへ）と設定ページのリクエスト処理
+  networkLoop();
+  webSettingsLoop();
+
+  // 切り替え間隔（既定10秒）ごとにセンサー値取得 & 画面更新
+  if (current_time - last_update >= settings.interval_sec * 1000UL || first_display) {
     last_update = current_time;
+    
+    // 設定の変更や AP モードへの切り替えで今の画面が無効になっていたら、次の有効な画面へ
+    if (!isScreenEnabled(display_mode)) {
+      display_mode = nextEnabledScreen(display_mode);
+    }
     
     // センサー値の取得
     // 有効なセンサーのみ読み込む
@@ -443,8 +502,10 @@ void loop() {
     }
     if (sensor_mics5524_enabled) {
       // ヒーターが温まったら一度だけ新鮮な空気の基準値（Ro）を取る
-      if (!mics5524.isCalibrated() && mics5524.isWarmedUp()) {
+      // 設定ページから要求されたときも取り直す
+      if (mics5524.isWarmedUp() && (!mics5524.isCalibrated() || mics5524_calibration_requested)) {
         mics5524.calibrate();
+        mics5524_calibration_requested = false;
       }
       mics5524_data = mics5524.read();
     }
@@ -667,15 +728,23 @@ void loop() {
           displayMonthDay(timeinfo.tm_mon + 1, timeinfo.tm_mday);
           break;
         }
-        case 6: {
-          // WiFi QRコード表示画面
-          displayWiFiQR(WIFI_SSID, WIFI_PASSWORD);
+        case SCREEN_WIFI_QR: {
+          // WiFi QRコード表示画面（AP モード中は自分の AP に接続するための QR）
+          if (isAPMode()) {
+            displayWiFiQR(getAPSSID(), "");
+          } else {
+            displayWiFiQR(settings.wifi_ssid, settings.wifi_password);
+          }
           break;
         }
         case 7:
           // Climate Modern（温度/湿度モダンデザイン）
           displayClimateModern(aht21_data, sensor_aht21_enabled, bmp280_data, sensor_bmp280_enabled,
                                temp_history, humid_history, history_count, history_index);
+          break;
+        case SCREEN_SETTINGS_QR:
+          // 設定ページの URL の QRコード
+          displaySettingsQR(getSettingsURL());
           break;
         default:
           // 無効な画面モード（デフォルトケース）
@@ -686,10 +755,7 @@ void loop() {
     } while (display.nextPage());
     
     // 画面表示モードを進める（有効な画面のみを表示）
-    uint8_t start_mode = display_mode;
-    do {
-      display_mode = (display_mode + 1) % NUM_SCREENS;
-    } while (!SCREEN_ENABLED[display_mode] && display_mode != start_mode);
+    display_mode = nextEnabledScreen(display_mode);
     
     // 部分リフレッシュでも完了を待機
     delay(100);
@@ -703,44 +769,11 @@ void loop() {
 // WiFi + NTP 関連関数
 // ============================================================================
 
-void setupWiFi() {
-  Serial.println("\n=== WiFi接続開始 ===");
-  Serial.printf("SSID: %s\n", WIFI_SSID);
-  
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✓ WiFi接続成功");
-    Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
-    
-    // TX Power設定（8.5dB減衰 = 11.5dBm出力）
-    esp_wifi_set_max_tx_power(46);
-    
-    // TX Power設定の確認
-    int8_t tx_power;
-    esp_wifi_get_max_tx_power(&tx_power);
-    Serial.printf("📡 TX Power Setting: %d (≈ %.1f dBm)\n", tx_power, tx_power / 4.0);
-  } else {
-    // 自動再接続が有効なので、ルーターが復帰すれば後から繋がる
-    Serial.println("\n✗ WiFi接続失敗（バックグラウンドで再接続を継続）");
-  }
-}
-
 void setupNTP() {
   Serial.println("\n=== NTP時刻同期開始 ===");
 
-  // タイムゾーン設定（JST: UTC+9）
   // WiFi未接続でも設定しておけば、接続された時点で自動的に同期される
-  configTzTime("JST-9", NTP_SERVER1, NTP_SERVER2);
+  applyTimeSettings();
 
   if (!isWiFiConnected()) {
     Serial.println("⚠ WiFi未接続のため、接続後にバックグラウンドで同期します");
@@ -759,14 +792,19 @@ void setupNTP() {
   Serial.println();
   if (isTimeSynced()) {
     Serial.println("✓ NTP同期成功");
-    Serial.printf("現在時刻: %s JST\n", getCurrentDateTime().c_str());
+    Serial.printf("現在時刻: %s (%s)\n", getCurrentDateTime().c_str(), settings.timezone.c_str());
   } else {
     Serial.println("✗ NTP同期失敗（バックグラウンドで同期を継続）");
   }
 }
 
-bool isWiFiConnected() {
-  return WiFi.status() == WL_CONNECTED;
+// NTPサーバーとタイムゾーンを settings から反映する（設定ページで保存したときも呼ばれる）
+void applyTimeSettings() {
+  // SNTP はサーバー名の文字列を指すポインタをそのまま持ち続けるので、
+  // settings.ntp_server（書き換えると領域が移る）ではなく固定の領域に写して渡す
+  static char ntp_server[64];
+  strlcpy(ntp_server, settings.ntp_server.c_str(), sizeof(ntp_server));
+  configTzTime(settings.timezone.c_str(), ntp_server, NTP_SERVER_FALLBACK);
 }
 
 bool isTimeSynced() {

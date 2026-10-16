@@ -7,7 +7,8 @@
 - **マルチセンサー統合**: 6種類のセンサーから環境データを取得
 - **e-Paper ディスプレイ**: WeAct 1.54" (200×200px) に見やすく表示
 - **WiFi + NTP**: インターネット接続による正確な時刻管理
-- **複数画面表示**: 10秒ごとに異なる情報を自動切り替え
+- **設定ページ**: WiFi に接続できないときは本体が AP になり、スマホや PC から WiFi や各種設定を変更できる
+- **複数画面表示**: 10秒（設定ページで変更可）ごとに異なる情報を自動切り替え
 
 ---
 
@@ -98,7 +99,7 @@ graph TB
 | ドライバ IC | SSD1681 |
 | 解像度 | 200 × 200 px |
 | リフレッシュ | 部分更新＋10分ごとのフルリフレッシュ |
-| 更新周期 | 10秒 |
+| 更新周期 | 10秒（設定ページで変更可） |
 
 ---
 
@@ -112,8 +113,9 @@ graph TB
 | **3: Gas Sensor** | Rs/Ro（起動後3分間は Warming up） | MICS5524 |
 | **4: Date & Time** | 現在時刻（既定で無効） | NTP同期 |
 | **5: Month Day** | 月日表示 | NTP同期 |
-| **6: WiFi QR** | WiFi QR コード | WiFi接続情報 |
+| **6: WiFi QR** | WiFi QR コード（中央に WiFi マーク。AP モード中は本体の AP） | WiFi接続情報 |
 | **7: Climate Modern** | 温度・湿度の円形ゲージ＋過去24時間グラフ | AHT21・BMP280 |
+| **8: Settings QR** | 設定ページの URL の QR コード（中央に歯車） | 本体の IP アドレス |
 
 ---
 
@@ -121,21 +123,33 @@ graph TB
 
 ### 1️⃣ WiFi 設定
 
-`include/wifi_config.h` ファイルを編集:
+本体の画面に出る QR コードをスマホで読み取り、設定ページで WiFi を選んでパスワードを入力します。
+
+1. 保存済みの WiFi に接続できないとき（未設定のとき、または 10秒×3回続けて失敗したとき）、本体が AP「XI-1-XXXX」（パスワードなし。XXXX は MAC アドレスの末尾）になる
+2. 画面に **WiFi QR（中央に WiFi マーク）** と **設定ページの QR（中央に歯車）** が交互に表示される
+3. WiFi QR を読み取って AP に接続し、続けて歯車の QR を読み取ると設定ページ（`http://192.168.4.1/`）が開く
+4. 一覧から WiFi を選び、パスワードを入力して「保存」すると、再起動して接続する
+
+- 稼働中に WiFi が切れたときは自動で再接続を試し、5分たっても戻らなければ AP モードになる
+- AP モード中も5分ごとに保存済みの WiFi への再接続を試す（停電後にルーターの起動が遅れた場合など）。スマホが AP に接続している間は試さない
+- WiFi に接続中も、画面8（設定ページの QR）から同じ設定ページを開ける
+- 設定は ESP32 の NVS（フラッシュ上の保存領域）に保存され、電源を切っても、ファームウェアを書き直しても残る
+- `include/wifi_config.h` を作っておくと（`include/wifi_config.h.example` をコピー）、設定ページで保存する前の初期値として使われる。なくてもビルドできる
+
+### 2️⃣ 設定ページでできること
+
+| 項目 | 内容 |
+|------|------|
+| WiFi | SSID（スキャン一覧から選択。一覧にない場合は手入力）とパスワード。変更すると再起動して接続 |
+| 画面 | 画面ごとの表示 ON/OFF、切り替え間隔（5〜3600秒、既定10秒） |
+| 時刻 | NTP サーバー（既定 `pool.ntp.org`）、タイムゾーン（POSIX 形式、既定 `JST-9`） |
+| ガスセンサー | 今の空気を基準値（Ro）として取り直す |
+| 本体 | 再起動、初期化（保存した設定を消して既定値に戻す） |
+
+画面の表示 ON/OFF の既定値（初回起動時・初期化後）は `src/main.cpp` の `SCREEN_DEFAULT_ENABLED` 配列:
 
 ```cpp
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
-```
-
-サンプル: `include/wifi_config.h.example` を参照
-
-### 2️⃣ 画面表示の有効/無効
-
-`src/main.cpp` の `SCREEN_ENABLED` 配列を編集:
-
-```cpp
-const bool SCREEN_ENABLED[NUM_SCREENS] = {
+const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality
   true,   // 画面1: Climate
   true,   // 画面2: Ambience
@@ -144,6 +158,7 @@ const bool SCREEN_ENABLED[NUM_SCREENS] = {
   true,   // 画面5: Month Day
   true,   // 画面6: WiFi QR
   true,   // 画面7: Climate Modern
+  true,   // 画面8: Settings QR
 };
 ```
 
@@ -193,15 +208,15 @@ platformio run --target upload
 - **検出対象**: CO、エタノール、水素、アンモニア、メタンなどの還元性ガス（種類は区別できない）
 - **用途**: 有害ガス検知
 - **注意**: 5V 給電のため、ガス濃度が非常に高いと出力が 3.3V（ESP32 の入力上限）を超えることがある
-- **キャリブレーション**: 起動後ヒーターが温まる3分間はウォームアップ表示。その後の空気を基準 (Ro) にするため、新鮮な空気の中で起動する
+- **キャリブレーション**: 起動後ヒーターが温まる3分間はウォームアップ表示。その後の空気を基準 (Ro) にするため、新鮮な空気の中で起動する。設定ページの「今の空気を基準にする」で取り直すこともできる
 
 ---
 
 ## 📡 WiFi + NTP
 
-- **WiFi**: インターネット接続で QR コード表示可能
-- **NTP**: pool.ntp.org より JST (UTC+9) を自動同期
-- **再同期**: 24時間ごと自動更新
+- **WiFi**: 接続できないときは AP モードになり、設定ページから設定する（上の「WiFi 設定」を参照）
+- **NTP**: 設定ページで指定したサーバー（既定 pool.ntp.org、予備 time.nist.gov）から、指定したタイムゾーン（既定 JST-9）で自動同期
+- **再同期**: ESP-IDF が3時間ごとに自動更新
 - **TX Power**: 最小化設定 (11.5 dBm) で消費電力削減
 
 ---
@@ -209,11 +224,12 @@ platformio run --target upload
 ## 🚀 動作フロー
 
 ```
-起動 → I2C・SPI・センサー初期化 → WiFi接続 → NTP同期
+起動 → 設定読み込み (NVS) → I2C・SPI・センサー初期化 → WiFi接続 → NTP同期 → 設定ページ起動
+                                                  └ 接続できなければ AP モード（WiFi QR と設定ページ QR を交互に表示）
   ↓
 初回フルリフレッシュ (約1.5秒)
   ↓
-10秒ごとにセンサー読み込み → 画面更新 (部分リフレッシュ)
+切り替え間隔（既定10秒）ごとにセンサー読み込み → 画面更新 (部分リフレッシュ)
   ↓
 10分ごとにゴースト軽減のためフルリフレッシュ → ループ
 ```
@@ -261,6 +277,9 @@ XI-1/
 ├── src/
 │   ├── main.cpp               # メインプログラム
 │   ├── display_screens.cpp    # 画面表示関数
+│   ├── network.cpp            # WiFi 接続と AP モード
+│   ├── web_settings.cpp       # 設定ページ（Web サーバー）
+│   ├── settings.cpp           # 設定の NVS への保存・読み込み
 │   ├── Custom_ENS160.cpp      # 空気品質センサー
 │   ├── Custom_AHT21.cpp       # 温湿度センサー
 │   ├── Custom_BMP280.cpp      # 気圧センサー
@@ -268,9 +287,12 @@ XI-1/
 │   ├── Custom_MICS5524.cpp    # ガスセンサー
 │   └── u8g2_gfx_font_test.cpp # U8g2 フォントのテスト（別 env でのみビルド）
 ├── include/
-│   ├── wifi_config.h          # WiFi 接続設定 ⭐ 要作成（.example をコピー）
+│   ├── wifi_config.h          # WiFi 接続設定の初期値（任意。.example をコピー）
 │   ├── wifi_config.h.example  # WiFi 設定のひな形
 │   ├── display_screens.h      # 画面ヘッダ
+│   ├── network.h              # WiFi 接続と AP モード
+│   ├── web_settings.h         # 設定ページ
+│   ├── settings.h             # 設定（NVS）
 │   ├── adc_util.h             # ADC 電圧変換（eFuse 校正）
 │   ├── Custom_MAX9814.h       # マイク入力（ヘッダのみ）
 │   └── Custom_*.h             # センサーヘッダ

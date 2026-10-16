@@ -2,11 +2,12 @@
 
 ## 📱 機能概要
 
-ESP32-C3 + e-paper ディスプレイが **8つの画面を10秒ごとに自動切り替え**します。
+ESP32-C3 + e-paper ディスプレイが **9つの画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
 
-- 画面は `src/main.cpp` の `NUM_SCREENS`（= 8）と `SCREEN_ENABLED[]` で管理
-- `SCREEN_ENABLED` が `false` の画面はスキップされ、次の有効な画面が表示される
-- デフォルトでは **画面4: Date & Time だけが無効**（7画面をローテーション）
+- 画面は `src/main.cpp` の `NUM_SCREENS`（= 9）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
+- 無効な画面はスキップされ、次の有効な画面が表示される（`isScreenEnabled()` / `nextEnabledScreen()`）
+- デフォルトでは **画面4: Date & Time だけが無効**（8画面をローテーション）
+- AP モード中（WiFi に接続できないとき）は、画面6: WiFi QR と画面8: Settings QR だけを交互に表示する
 - 各画面の描画関数は `src/display_screens.cpp` にあり、センサーデータは引数で受け取る（→ `SENSOR_DATA_PASSING.md`）
 
 > 📝 初期の設計案には「システム情報」画面（Env GOOD/OK/CAUTION・Uptime・Active Sensors）がありましたが、実装されていません。
@@ -26,14 +27,16 @@ ESP32-C3 + e-paper ディスプレイが **8つの画面を10秒ごとに自動�
 │ (画面4: Date & Time  ※デフォルト無効→スキップ)│
 │ 画面5: Month Day        (NTP時刻)           │
 │ ↓ 10秒                                      │
-│ 画面6: WiFi QR          (wifi_config.h)     │
+│ 画面6: WiFi QR          (保存済みの WiFi)   │
 │ ↓ 10秒                                      │
 │ 画面7: Climate Modern   (AHT21 / BMP280)    │
+│ ↓ 10秒                                      │
+│ 画面8: Settings QR      (本体の IP)         │
 │ ↓ 10秒 (画面0へループ)                      │
 └─────────────────────────────────────────────┘
 ```
 
-画面番号は `display_mode` の値（0〜7）です。シリアル出力では `Screen 1/8`〜`Screen 8/8`（`display_mode + 1`）と表示されます。
+画面番号は `display_mode` の値（0〜8）です。シリアル出力では `Screen 1/9`〜`Screen 9/9`（`display_mode + 1`）と表示されます。
 
 ---
 
@@ -123,7 +126,7 @@ WiFi: Connected
 - NTP 同期した現在時刻（JST, `getCurrentDateTime()`）
 - WiFi 接続状態（`isWiFiConnected()`）
 
-使う場合は `SCREEN_ENABLED[4]` を `true` にします。
+使う場合は設定ページで画面4を ON にします。
 
 ---
 
@@ -140,7 +143,7 @@ WiFi: Connected
 
 ### 📱 **画面6: WiFi QR** - `displayWiFiQR()`
 
-`wifi_config.h` の `WIFI_SSID` / `WIFI_PASSWORD` から `WIFI:T:WPA;S:...;P:...;;` 形式の QR コードを生成し、画面いっぱいに表示します（バージョンは 1〜10 から自動選択、誤り訂正レベル L）。詳細は `WIFI_QR_SCREEN.md`。
+保存済みの WiFi（設定ページで設定）から `WIFI:T:WPA;S:...;P:...;;` 形式の QR コードを生成し、中央に WiFi マークを重ねて表示します（バージョンは 1〜10 から自動選択、誤り訂正レベル Q）。AP モード中は本体の AP に接続するための QR になります。詳細は `WIFI_QR_SCREEN.md`。
 
 ---
 
@@ -171,15 +174,23 @@ HUMIDITY
 
 ---
 
+### 📱 **画面8: Settings QR（設定ページ）** - `displaySettingsQR()`
+
+設定ページの URL（`http://<本体のIP>/`、AP モード中は `http://192.168.4.1/`）の QR コードを、中央に歯車を重ねて表示します。WiFi 切断中は "WiFi: Not Connected" と表示します。詳細は `WIFI_QR_SCREEN.md`。
+
+---
+
 ## 🔧 カスタマイズ
 
 ### 1. 画面の有効/無効を切り替える
 
-`src/main.cpp` の `SCREEN_ENABLED` を編集します。
+設定ページ（画面8の QR から開く）のチェックボックスで切り替えます。設定は NVS に保存され、再起動しても残ります。
+
+保存する前（初回起動時・初期化後）の既定値は `src/main.cpp` の `SCREEN_DEFAULT_ENABLED` です。
 
 ```cpp
-#define NUM_SCREENS 8
-const bool SCREEN_ENABLED[NUM_SCREENS] = {
+#define NUM_SCREENS 9
+const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
   true,   // 画面2: Ambience (視聴覚環境)
@@ -188,29 +199,22 @@ const bool SCREEN_ENABLED[NUM_SCREENS] = {
   true,   // 画面5: Month Day (月日表示)
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
+  true,   // 画面8: Settings QR Code (設定ページの URL)
 };
 ```
 
 ### 2. 切り替え間隔を変更
 
-`loop()` 冒頭の条件を修正します。この間隔は **センサー読み取りの間隔も兼ねています**。
-
-```cpp
-// 現在: 10秒ごと
-if (current_time - last_update >= 10000 || first_display) {
-
-// 変更例: 15秒ごと
-if (current_time - last_update >= 15000 || first_display) {
-```
+設定ページの「切り替え間隔（秒）」で変更します（5〜3600秒、既定10秒）。この間隔は **センサー読み取りの間隔も兼ねています**。
 
 ### 3. 画面の順序を変更
 
-表示順は `display_mode` の番号順（0→7）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_ENABLED` の並びも合わせます。
+表示順は `display_mode` の番号順（0→8）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
 
 ### 4. 画面の追加
 
 1. `include/display_screens.h` に関数を宣言し、`src/display_screens.cpp` に実装する（必要なデータは引数で受け取る）
-2. `main.cpp` の `NUM_SCREENS` を増やし、`SCREEN_ENABLED` に要素を追加する
+2. `main.cpp` の `NUM_SCREENS` を増やし、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES`（設定ページに出す名前）に要素を追加する
 3. `switch(display_mode)` に `case` を追加する
 
 ```cpp
@@ -218,19 +222,23 @@ if (current_time - last_update >= 15000 || first_display) {
 void displayCustom(const AHT21Data& aht21_data, bool aht21_enabled);
 
 // main.cpp
-#define NUM_SCREENS 9
-const bool SCREEN_ENABLED[NUM_SCREENS] = {
-  // ... 既存の8画面 ...
-  true,   // 画面8: Custom
+#define NUM_SCREENS 10
+const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
+  // ... 既存の9画面 ...
+  true,   // 画面9: Custom
+};
+const char* const SCREEN_NAMES[NUM_SCREENS] = {
+  // ... 既存の9画面 ...
+  "Custom",
 };
 
 // loop() の switch 内
-case 8:
+case 9:
   displayCustom(aht21_data, sensor_aht21_enabled);
   break;
 ```
 
-画面送りは `% NUM_SCREENS` で計算しているので、それ以外の変更は不要です。
+画面の有効/無効は NVS に16ビットのビットマスクで保存しているので、画面は16個まで追加できます。設定を保存した後にファームウェアで画面を増やした場合、増えた画面には `SCREEN_DEFAULT_ENABLED` の値が使われます（保存時の画面数も NVS に記録して見分けています）。
 
 ---
 
@@ -238,7 +246,7 @@ case 8:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 1/8
+📺 画面: Screen 1/9
 📊 センサーデータ更新:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   eCO2: 410 ppm
@@ -251,13 +259,13 @@ case 8:
 
 🔄 初回フルリフレッシュ実行
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 2/8
+📺 画面: Screen 2/9
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 4/8
+📺 画面: Screen 4/9
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 6/8      ← Screen 5/8（Date & Time）は無効なのでスキップ
+📺 画面: Screen 6/9      ← Screen 5/9（Date & Time）は無効なのでスキップ
 ...
 ```
 
@@ -285,18 +293,17 @@ pio device monitor -e esp32-c3-super-mini-k2
 ```cpp
 static uint8_t display_mode = 0;
 
-// 10秒ごと（初回は即時）
-if (current_time - last_update >= 10000 || first_display) {
-    // 1. 有効なセンサーの値を読み込む（MICS5524 はウォームアップ後に一度だけキャリブレーション）
+// 毎回: WiFi の監視（networkLoop）と設定ページのリクエスト処理（webSettingsLoop）
+// 切り替え間隔（既定10秒）ごと（初回は即時）
+if (current_time - last_update >= settings.interval_sec * 1000UL || first_display) {
+    // 0. 今の画面が無効になっていたら（設定変更・AP モード）次の有効な画面へ
+    // 1. 有効なセンサーの値を読み込む（MICS5524 はウォームアップ後と、設定ページで要求されたときにキャリブレーション）
     // 2. 10分ごとに温湿度を履歴へ保存
     // 3. シリアルへ出力
     // 4. リフレッシュ方式を選ぶ（初回・10分ごと: フル、それ以外: 部分）
     // 5. switch(display_mode) で画面を描画
     // 6. 次の有効な画面へ進める
-    uint8_t start_mode = display_mode;
-    do {
-        display_mode = (display_mode + 1) % NUM_SCREENS;
-    } while (!SCREEN_ENABLED[display_mode] && display_mode != start_mode);
+    display_mode = nextEnabledScreen(display_mode);
 }
 ```
 
@@ -317,8 +324,9 @@ if (current_time - last_update >= 10000 || first_display) {
 ### Q: 画面が切り替わらない
 
 **A:** 以下を確認してください
-- [ ] `SCREEN_ENABLED` で2つ以上の画面が `true` になっているか（1つだけだとその画面のまま）
-- [ ] シリアルの `📺 画面: Screen N/8` の番号が進んでいるか
+- [ ] 設定ページで2つ以上の画面が ON になっているか（1つだけだとその画面のまま）
+- [ ] AP モードになっていないか（AP モード中は WiFi QR と Settings QR だけを交互に表示する）
+- [ ] シリアルの `📺 画面: Screen N/9` の番号が進んでいるか
 - [ ] e-paper の配線（特に BUSY）が正しいか
 
 ### Q: 特定の画面だけ表示がおかしい

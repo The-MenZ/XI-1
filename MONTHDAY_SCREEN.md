@@ -44,7 +44,7 @@
 void displayMonthDay(int month, int day);
 ```
 
-※ 画面番号は `main.cpp` の `SCREEN_ENABLED` / `switch` の添字（0始まり）と同じです。
+※ 画面番号は `main.cpp` の `SCREEN_DEFAULT_ENABLED` / `switch` の添字（0始まり）と同じです。
 
 ### 実装 (`display_screens.cpp`)
 ```cpp
@@ -92,7 +92,7 @@ case 5: {
 
 ## 📊 画面順序
 
-`main.cpp` の `SCREEN_ENABLED` で各画面の有効/無効を設定します。
+各画面の有効/無効は設定ページで変更します（既定値は `main.cpp` の `SCREEN_DEFAULT_ENABLED`）。
 
 | 画面 | 画面名 | 内容 | 既定 |
 |------|--------|------|------|
@@ -104,13 +104,14 @@ case 5: {
 | 5 | **Month Day** | 月・日のみ | 有効 |
 | 6 | WiFi QR | WiFi 接続用 QR コード | 有効 |
 | 7 | Climate Modern | 温湿度の円形ゲージ＋過去24時間グラフ | 有効 |
+| 8 | Settings QR | 設定ページの QR コード | 有効 |
 
 ---
 
 ## 🔄 動作フロー
 
 ```
-10秒ごとに有効な画面だけが切り替わります（既定）：
+切り替え間隔（既定10秒）ごとに有効な画面だけが切り替わります（既定）：
 
 Air Quality
     ↓ 10秒
@@ -125,6 +126,8 @@ Month Day          ← Date & Time は既定で無効なのでスキップ
 WiFi QR
     ↓ 10秒
 Climate Modern
+    ↓ 10秒
+Settings QR
     ↓ 10秒
 [リピート]
 ```

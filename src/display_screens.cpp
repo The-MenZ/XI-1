@@ -244,14 +244,53 @@ void displayMonthDay(int month, int day) {
 }
 
 // ============================================================================
-// 画面6: WiFi QRコード表示
+// 画面6: WiFi QRコード表示 / 画面8: 設定ページ QRコード表示
 // ============================================================================
 
-// 誤り訂正レベル L・バイトモードで各バージョンに入る最大バイト数（v1〜v10）
+// 中央にアイコンを重ねて隠れたマスは誤り訂正で補うので、誤り訂正レベルは Q（約25%まで復元）
+// 誤り訂正レベル Q・バイトモードで各バージョンに入る最大バイト数（v1〜v10）
 // ricmoo/QRCode は容量チェックをせず、溢れるとスタック上のバッファを壊すため、
 // ここで収まるバージョンを選んでから生成する
-static const uint16_t QR_BYTE_CAPACITY_L[] = {17, 32, 53, 78, 106, 134, 154, 192, 230, 271};
-static const uint8_t QR_MAX_VERSION = sizeof(QR_BYTE_CAPACITY_L) / sizeof(QR_BYTE_CAPACITY_L[0]);
+static const uint16_t QR_BYTE_CAPACITY_Q[] = {11, 20, 32, 46, 60, 74, 86, 108, 130, 151};
+static const uint8_t QR_MAX_VERSION = sizeof(QR_BYTE_CAPACITY_Q) / sizeof(QR_BYTE_CAPACITY_Q[0]);
+
+// v7 以降は中央に位置合わせパターンが入るので、アイコンを重ねない
+static const uint8_t QR_ICON_MAX_VERSION = 6;
+
+// QR 中央のアイコン（32×32、1bit、Adafruit GFX の drawBitmap 形式）
+// 隠れるのは QR 全体の 8% 以下（v2〜v6、200px 表示時）
+#define QR_ICON_SIZE 32
+#define QR_ICON_MARGIN 2  // アイコンの周りの白い余白（px）
+
+// WiFi マーク（WiFi QR 用）
+static const uint8_t ICON_WIFI[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x3F, 0xFC, 0x00, 0x01, 0xFF, 0xFF, 0x80, 0x07, 0xFF, 0xFF, 0xE0,
+  0x1F, 0xF0, 0x0F, 0xF8, 0x3F, 0x00, 0x00, 0xFC, 0x7C, 0x00, 0x00, 0x3E,
+  0xF8, 0x07, 0xE0, 0x1F, 0xE0, 0x7F, 0xFE, 0x07, 0x41, 0xFF, 0xFF, 0x82,
+  0x03, 0xFF, 0xFF, 0xC0, 0x07, 0xE0, 0x07, 0xE0, 0x0F, 0x80, 0x01, 0xF0,
+  0x07, 0x00, 0x00, 0xE0, 0x00, 0x0F, 0xF0, 0x00, 0x00, 0x3F, 0xFC, 0x00,
+  0x00, 0x7F, 0xFE, 0x00, 0x00, 0x7E, 0x7E, 0x00, 0x00, 0x30, 0x0C, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xC0, 0x00,
+  0x00, 0x07, 0xE0, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x00, 0x07, 0xE0, 0x00,
+  0x00, 0x07, 0xE0, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// 歯車（設定ページ QR 用）
+static const uint8_t ICON_GEAR[] = {
+  0x00, 0x01, 0x80, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x00, 0x07, 0xE0, 0x00,
+  0x01, 0x07, 0xE0, 0x80, 0x03, 0x87, 0xE1, 0xC0, 0x07, 0xC7, 0xE3, 0xE0,
+  0x0F, 0xFF, 0xFF, 0xF0, 0x1F, 0xFF, 0xFF, 0xF8, 0x0F, 0xFF, 0xFF, 0xF0,
+  0x07, 0xFF, 0xFF, 0xE0, 0x03, 0xFF, 0xFF, 0xC0, 0x03, 0xFC, 0x3F, 0xC0,
+  0x03, 0xF8, 0x1F, 0xC0, 0x7F, 0xF0, 0x0F, 0xFE, 0x7F, 0xE0, 0x07, 0xFE,
+  0xFF, 0xE0, 0x07, 0xFF, 0xFF, 0xE0, 0x07, 0xFF, 0x7F, 0xE0, 0x07, 0xFE,
+  0x7F, 0xF0, 0x0F, 0xFE, 0x03, 0xF8, 0x1F, 0xC0, 0x03, 0xFC, 0x3F, 0xC0,
+  0x03, 0xFF, 0xFF, 0xC0, 0x07, 0xFF, 0xFF, 0xE0, 0x0F, 0xFF, 0xFF, 0xF0,
+  0x1F, 0xFF, 0xFF, 0xF8, 0x0F, 0xFF, 0xFF, 0xF0, 0x07, 0xC7, 0xE3, 0xE0,
+  0x03, 0x87, 0xE1, 0xC0, 0x01, 0x07, 0xE0, 0x80, 0x00, 0x07, 0xE0, 0x00,
+  0x00, 0x07, 0xE0, 0x00, 0x00, 0x01, 0x80, 0x00,
+};
 
 // WiFi QR の値に含まれる特殊文字（\ ; , : "）をバックスラッシュでエスケープ
 static String escapeWiFiQRField(const String& value) {
@@ -266,23 +305,19 @@ static String escapeWiFiQRField(const String& value) {
   return escaped;
 }
 
-void displayWiFiQR(const String& ssid, const String& password) {
-  // QRコード用の文字列生成（WiFi設定フォーマット）
-  // フォーマット: WIFI:T:認証方式;S:SSID;P:パスワード;;
-  String wifi_string = "WIFI:T:WPA;S:" + escapeWiFiQRField(ssid) +
-                       ";P:" + escapeWiFiQRField(password) + ";;";
-
+// text を QR コードにして画面中央に描き、icon があれば中央に重ねる
+static void drawQRCode(const String& text, const uint8_t* icon) {
   // 文字列が収まる最小のバージョンを選ぶ（小さいほど1マスを大きく描ける）
   uint8_t version = 0;
   for (uint8_t v = 1; v <= QR_MAX_VERSION; v++) {
-    if (wifi_string.length() <= QR_BYTE_CAPACITY_L[v - 1]) {
+    if (text.length() <= QR_BYTE_CAPACITY_Q[v - 1]) {
       version = v;
       break;
     }
   }
 
   if (version == 0) {
-    Serial.printf("DEBUG: QRCode data too long (%u bytes)\n", wifi_string.length());
+    Serial.printf("DEBUG: QRCode data too long (%u bytes)\n", text.length());
     display.setTextColor(GxEPD_BLACK);
     display.setFont(&FreeSans9pt7b);
     display.setCursor(20, 100);
@@ -294,10 +329,10 @@ void displayWiFiQR(const String& ssid, const String& password) {
   uint8_t qrcodedata[qrcode_getBufferSize(version)];
   struct QRCode qrcode;
 
-  int err = qrcode_initText(&qrcode, qrcodedata, version, ECC_LOW, wifi_string.c_str());
+  int err = qrcode_initText(&qrcode, qrcodedata, version, ECC_QUARTILE, text.c_str());
 
   Serial.printf("DEBUG: QRCode gen err=%d, version=%d, size=%d, bytes=%u\n",
-                err, version, qrcode.size, wifi_string.length());
+                err, version, qrcode.size, text.length());
 
   if (err != 0) {
     // エラー時はエラーメッセージ表示
@@ -309,9 +344,10 @@ void displayWiFiQR(const String& ssid, const String& password) {
   }
   
   // QRコードのドット一個のピクセルサイズ（画面いっぱいに表示）
-  int module_size = display.width() / qrcode.size;
-  if ((qrcode.size * module_size) > display.height()) {
-    module_size = display.height() / qrcode.size;
+  // 周りに最低1マスの白い余白を残す（余白がないとカメラが QR の境目を見つけにくい）
+  int module_size = display.width() / (qrcode.size + 2);
+  if (((qrcode.size + 2) * module_size) > display.height()) {
+    module_size = display.height() / (qrcode.size + 2);
   }
   int qr_width = qrcode.size * module_size;
   int start_x = (display.width() - qr_width) / 2;
@@ -341,6 +377,54 @@ void displayWiFiQR(const String& ssid, const String& password) {
   }
   
   Serial.printf("DEBUG: black_pixels=%d (drawn with fillRect)\n", black_pixels);
+
+  if (icon == nullptr || version > QR_ICON_MAX_VERSION) {
+    return;
+  }
+
+  // アイコン + 余白を覆う奇数マスの白い正方形を、QR の中央のマスに合わせて置く
+  // （QR の一辺は必ず奇数マスなので、奇数マスの正方形はちょうど中央に収まる）
+  int box = (QR_ICON_SIZE + QR_ICON_MARGIN * 2 + module_size - 1) / module_size;
+  if (box % 2 == 0) {
+    box++;
+  }
+  int box_px = box * module_size;
+  int box_x = start_x + (qrcode.size - box) / 2 * module_size;
+  int box_y = start_y + (qrcode.size - box) / 2 * module_size;
+  display.fillRect(box_x, box_y, box_px, box_px, GxEPD_WHITE);
+  display.drawBitmap(
+    box_x + (box_px - QR_ICON_SIZE) / 2,
+    box_y + (box_px - QR_ICON_SIZE) / 2,
+    icon, QR_ICON_SIZE, QR_ICON_SIZE, GxEPD_BLACK
+  );
+}
+
+void displayWiFiQR(const String& ssid, const String& password) {
+  // QRコード用の文字列生成（WiFi設定フォーマット）
+  // フォーマット: WIFI:T:認証方式;S:SSID;P:パスワード;; （パスワードなしは T:nopass）
+  String wifi_string;
+  if (password.length() == 0) {
+    wifi_string = "WIFI:T:nopass;S:" + escapeWiFiQRField(ssid) + ";;";
+  } else {
+    wifi_string = "WIFI:T:WPA;S:" + escapeWiFiQRField(ssid) +
+                  ";P:" + escapeWiFiQRField(password) + ";;";
+  }
+  drawQRCode(wifi_string, ICON_WIFI);
+}
+
+void displaySettingsQR(const String& url) {
+  if (url.length() == 0) {
+    // WiFi 切断中（自動再接続を待っている間）は URL がない
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(20, 90);
+    display.print("Settings");
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(20, 120);
+    display.print("WiFi: Not Connected");
+    return;
+  }
+  drawQRCode(url, ICON_GEAR);
 }
 
 // ============================================================================

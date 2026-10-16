@@ -3,7 +3,7 @@
 > ⚠️ **このドキュメントは当時の設計メモ（履歴）です。** 画面数・関数シグネチャ・行数などは現在のコードと異なります。
 >
 > **現在の設計（要約）**
-> - 画面は **8つ**（Air Quality / Climate / Ambience / Gas Sensor / Date & Time / Month Day / WiFi QR / Climate Modern）。`main.cpp` の `NUM_SCREENS` と `SCREEN_ENABLED[]` で管理し、無効な画面はスキップ（デフォルトでは Date & Time が無効）
+> - 画面は **9つ**（Air Quality / Climate / Ambience / Gas Sensor / Date & Time / Month Day / WiFi QR / Climate Modern / Settings QR）。`main.cpp` の `NUM_SCREENS` で管理し、有効/無効は設定ページで変更（既定値は `SCREEN_DEFAULT_ENABLED[]`、デフォルトでは Date & Time が無効）。無効な画面はスキップ
 > - 描画関数は `display_screens.cpp` にあり、センサーデータは **引数（`const XxxData&` と有効フラグ）で明示的に渡す**。センサーデータの `extern` 参照はしていない（→ `SENSOR_DATA_PASSING.md`）
 > - `extern` で参照しているのは、`display_screens.h` の `display` オブジェクトと、`display_screens.cpp` の `getAQIStatusEnglish()`（`main.cpp` で定義）のみ
 > - `switch(display_mode)` の `default` は何もしない。画面送りは `switch` の後で「次の有効な画面」へ進める
@@ -35,7 +35,7 @@ src/
 ## 🔄 変更内容（当時）
 
 ### 1️⃣ **新しいヘッダーファイル** (`display_screens.h`)
-当時は5つの画面表示関数を宣言（現在は Month Day / WiFi QR / Climate Modern を加えた8つ）：
+当時は5つの画面表示関数を宣言（現在は Month Day / WiFi QR / Climate Modern / Settings QR を加えた9つ）：
 - `displayAirQuality()` - 空気品質
 - `displayClimate()` - 温熱環境
 - `displayAmbience()` - 視聴覚環境
@@ -119,9 +119,9 @@ void displayNewScreen(const AHT21Data& aht21_data, bool aht21_enabled) {
   // 新しい画面のロジック
 }
 
-// main.cpp: NUM_SCREENS を 9 にし、SCREEN_ENABLED に要素を追加
+// main.cpp: NUM_SCREENS を 10 にし、SCREEN_DEFAULT_ENABLED と SCREEN_NAMES に要素を追加
 // loop() の switch 文に追加
-case 8:
+case 9:
   displayNewScreen(aht21_data, sensor_aht21_enabled);
   break;
 ```
