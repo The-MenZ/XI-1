@@ -17,10 +17,18 @@ struct Settings {
   uint16_t interval_sec;  // 画面の切り替え間隔（秒）
   String ntp_server;
   String timezone;        // POSIX 形式のタイムゾーン（例: JST-9）
+  String weather_place;   // 天気の地域名（設定ページに出すだけ。画面には出さない）
+  String weather_lat;     // 天気の地域の緯度・経度（10進数の文字列のまま API に渡す。未設定なら空）
+  String weather_lon;
   int16_t altitude_m;     // 設置場所の標高（m）。気圧を海面の高さに換算するのに使う
 };
 
 extern Settings settings;
+
+// 天気の地域が設定されているか
+inline bool hasWeatherLocation() {
+  return settings.weather_lat.length() > 0 && settings.weather_lon.length() > 0;
+}
 
 // 画面切り替え間隔の範囲（秒）
 #define INTERVAL_SEC_MIN 5

@@ -11,10 +11,6 @@
 // 関数プロトタイプ（main.cppで定義）
 extern String getAQIStatusEnglish(uint8_t aqi);
 
-// U8g2 のフォントで描くためのオブジェクト（Climate Modern と Pressure の画面で共用）
-// begin() は描画先を覚えるだけなので、使う画面の先頭で毎回呼ぶ
-static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
-
 // ============================================================================
 // 画面0: Air Quality (空気質)
 // ============================================================================
@@ -222,29 +218,105 @@ void displayDateTime(bool isWiFiConnected, const String& dateTimeStr) {
 }
 
 // ============================================================================
-// 画面5: 月日表示（シンプル & 洒落たデザイン）
+// 画面5: 月日表示（4分割の大きな丸ゴシック風数字）
 // ============================================================================
+// 画面を 100×100 の4区画に分け、上段に月、下段に日を1桁ずつ描く（10月17日 → 1 0 / 1 7）
+// 数字はフォントを使わず、中心線（直線と楕円弧）を丸いペンでなぞって描く。
+// 線の太さが一定で端と継ぎ目が丸くなり、データも数百バイトで済む
+
+#define MONTHDAY_CELL 100     // 1桁の区画（px）
+#define MONTHDAY_DIGIT_W 84   // 数字の外形の幅（px）
+#define MONTHDAY_DIGIT_H 96   // 数字の外形の高さ（px）
+#define MONTHDAY_PEN_R 10     // ペンの半径（線の太さは 2r+1 = 21px）
+
+// 数字の中心線を 幅60 × 高さ80 の設計座標で表す（y は下向き）
+struct DigitStroke {
+  char kind;              // 'L' = 直線, 'A' = 楕円弧
+  int8_t p0, p1, p2, p3;  // 直線: 始点 x, y と終点 x, y / 弧: 中心 x, y と半径 x, y
+  int16_t a0, a1;         // 弧の開始角と終了角（度。0 = 右、90 = 下で、a0 → a1 と時計回りに進む）
+};
+
+#define STROKE_LINE(x0, y0, x1, y1) {'L', x0, y0, x1, y1, 0, 0}
+#define STROKE_ARC(cx, cy, rx, ry, a0, a1) {'A', cx, cy, rx, ry, a0, a1}
+
+static const DigitStroke DIGIT_0[] = {STROKE_ARC(30, 40, 30, 40, 0, 360)};
+static const DigitStroke DIGIT_1[] = {STROKE_LINE(35, 0, 35, 80), STROKE_LINE(35, 0, 13, 15)};
+static const DigitStroke DIGIT_2[] = {STROKE_ARC(30, 26, 28, 26, 195, 400), STROKE_LINE(51, 43, 0, 80), STROKE_LINE(0, 80, 60, 80)};
+static const DigitStroke DIGIT_3[] = {STROKE_ARC(30, 20, 26, 20, 200, 450), STROKE_ARC(30, 60, 30, 20, 270, 520), STROKE_LINE(20, 40, 30, 40)};
+static const DigitStroke DIGIT_4[] = {STROKE_LINE(46, 0, 0, 58), STROKE_LINE(0, 58, 60, 58), STROKE_LINE(46, 0, 46, 80)};
+static const DigitStroke DIGIT_5[] = {STROKE_LINE(56, 0, 10, 0), STROKE_LINE(10, 0, 10, 35), STROKE_ARC(30, 54, 30, 26, 228, 510)};
+static const DigitStroke DIGIT_6[] = {STROKE_ARC(30, 52, 30, 28, 0, 360), STROKE_ARC(46, 52, 46, 52, 180, 258)};
+static const DigitStroke DIGIT_7[] = {STROKE_LINE(0, 0, 60, 0), STROKE_LINE(60, 0, 22, 80)};
+static const DigitStroke DIGIT_8[] = {STROKE_ARC(30, 20, 25, 20, 0, 360), STROKE_ARC(30, 59, 30, 21, 0, 360)};
+static const DigitStroke DIGIT_9[] = {STROKE_ARC(30, 28, 30, 28, 0, 360), STROKE_ARC(14, 28, 46, 52, 0, 78)};
+
+struct DigitGlyph {
+  const DigitStroke* strokes;
+  uint8_t count;
+};
+
+#define DIGIT_GLYPH(strokes) {strokes, sizeof(strokes) / sizeof(strokes[0])}
+static const DigitGlyph DIGIT_GLYPHS[10] = {
+  DIGIT_GLYPH(DIGIT_0), DIGIT_GLYPH(DIGIT_1), DIGIT_GLYPH(DIGIT_2), DIGIT_GLYPH(DIGIT_3), DIGIT_GLYPH(DIGIT_4),
+  DIGIT_GLYPH(DIGIT_5), DIGIT_GLYPH(DIGIT_6), DIGIT_GLYPH(DIGIT_7), DIGIT_GLYPH(DIGIT_8), DIGIT_GLYPH(DIGIT_9),
+};
+
+// 半径 r の丸いペンで (x0, y0) → (x1, y1) をなぞる（両端に円、間を2つの三角形で埋める）
+static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r) {
+  float dx = x1 - x0, dy = y1 - y0;
+  float len = sqrtf(dx * dx + dy * dy);
+  if (len > 0.5f) {
+    // 線に垂直な長さ r のベクトル
+    float nx = -dy / len * r, ny = dx / len * r;
+    int16_t ax = lroundf(x0 + nx), ay = lroundf(y0 + ny);
+    int16_t bx = lroundf(x0 - nx), by = lroundf(y0 - ny);
+    int16_t cx = lroundf(x1 - nx), cy = lroundf(y1 - ny);
+    int16_t ex = lroundf(x1 + nx), ey = lroundf(y1 + ny);
+    display.fillTriangle(ax, ay, bx, by, cx, cy, GxEPD_BLACK);
+    display.fillTriangle(ax, ay, cx, cy, ex, ey, GxEPD_BLACK);
+  }
+  display.fillCircle(lroundf(x0), lroundf(y0), r, GxEPD_BLACK);
+  display.fillCircle(lroundf(x1), lroundf(y1), r, GxEPD_BLACK);
+}
+
+// 区画 (cellX, cellY) の中央に数字を1つ描く
+static void drawDigitInCell(int digit, int16_t cellX, int16_t cellY) {
+  const int16_t r = MONTHDAY_PEN_R;
+  // 設計座標 → 画面座標。外形が DIGIT_W × DIGIT_H になるよう、ペンの太さを除いた分に中心線を合わせる
+  float sx = (MONTHDAY_DIGIT_W - 2 * r - 1) / 60.0f;
+  float sy = (MONTHDAY_DIGIT_H - 2 * r - 1) / 80.0f;
+  float ox = cellX + (MONTHDAY_CELL - MONTHDAY_DIGIT_W) / 2.0f + r;
+  float oy = cellY + (MONTHDAY_CELL - MONTHDAY_DIGIT_H) / 2.0f + r;
+
+  const DigitGlyph& glyph = DIGIT_GLYPHS[digit];
+  for (uint8_t i = 0; i < glyph.count; i++) {
+    const DigitStroke& s = glyph.strokes[i];
+    if (s.kind == 'L') {
+      drawRoundLine(ox + s.p0 * sx, oy + s.p1 * sy, ox + s.p2 * sx, oy + s.p3 * sy, r);
+      continue;
+    }
+
+    // 楕円弧は約3pxごとの折れ線にする（継ぎ目もペンの円で丸くなる）
+    float cx = ox + s.p0 * sx, cy = oy + s.p1 * sy;
+    float rx = s.p2 * sx, ry = s.p3 * sy;
+    float a0 = s.a0 * DEG_TO_RAD, a1 = s.a1 * DEG_TO_RAD;
+    int n = max(2, (int)ceilf((a1 - a0) * max(rx, ry) / 3));
+    float px = cx + rx * cosf(a0), py = cy + ry * sinf(a0);
+    for (int k = 1; k <= n; k++) {
+      float a = a0 + (a1 - a0) * k / n;
+      float qx = cx + rx * cosf(a), qy = cy + ry * sinf(a);
+      drawRoundLine(px, py, qx, qy, r);
+      px = qx;
+      py = qy;
+    }
+  }
+}
+
 void displayMonthDay(int month, int day) {
-  display.setTextColor(GxEPD_BLACK);
-  // FreeMonoBold24pt7b: 等幅太字フォント（余白がぴったり）
-  display.setFont(&FreeMonoBold24pt7b);
-  display.setTextSize(2);
-  
-  // 月を2文字でゼロパディング（上半分にセンター）
-  String month_str = (month < 10 ? "0" : "") + String(month);
-  int16_t x_month = (display.width() - (month_str.length() * 60)) / 2;
-  display.setCursor(x_month, 85);
-  display.println(month_str);
-  
-  // 日を2文字でゼロパディング（下半分にセンター）
-  String day_str = (day < 10 ? "0" : "") + String(day);
-  int16_t x_day = (display.width() - (day_str.length() * 60)) / 2;
-  display.setCursor(x_day, 175);
-  display.println(day_str);
-  
-  // フォント設定をリセット（次の画面表示に影響しないように）
-  display.setTextSize(1);
-  display.setFont();
+  drawDigitInCell(month / 10, 0, 0);
+  drawDigitInCell(month % 10, MONTHDAY_CELL, 0);
+  drawDigitInCell(day / 10, 0, MONTHDAY_CELL);
+  drawDigitInCell(day % 10, MONTHDAY_CELL, MONTHDAY_CELL);
 }
 
 // ============================================================================
@@ -431,16 +503,27 @@ void displaySettingsQR(const String& url) {
   drawQRCode(url, ICON_GEAR);
 }
 
+// U8g2 フォントで描くためのオブジェクト（画面7: Climate Modern、画面9: Weather、画面10: Pressure で共用）
+static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
+
+static void beginU8g2Fonts() {
+  static bool initialized = false;
+  if (!initialized) {
+    u8g2Fonts.begin(display);
+    initialized = true;
+  }
+}
+
 // ============================================================================
 // 画面7: Climate Modern (温度/湿度モダンデザイン)
 // ============================================================================
 void displayClimateModern(
   const AHT21Data& aht21_data, bool aht21_enabled,
   const BMP280Data& bmp280_data, bool bmp280_enabled,
-  const float* temp_history, const float* humid_history, 
+  const float* temp_history, const float* humid_history,
   int history_count, int history_index
 ) {
-  u8g2Fonts.begin(display);
+  beginU8g2Fonts();
 
   // センサーデータチェック
   if (!aht21_enabled && !bmp280_enabled) {
@@ -670,8 +753,280 @@ void displayClimateModern(
   }
 }
 
+
 // ============================================================================
-// 画面9: Pressure（天気図風の H/L と等圧線、3時間の気圧の傾向）
+// 画面9: Weather（天気）
+// ============================================================================
+// アイコンは画像を持たずに図形で描く。ESP32-C3 には FPU がないので座標は整数で計算する
+
+// 天気の種類（アイコンの描き分け。WEATHER_FOG 以降は雲の下に何か描く）
+enum WeatherKind {
+  WEATHER_CLEAR,
+  WEATHER_PARTLY_CLOUDY,
+  WEATHER_CLOUDY,
+  WEATHER_FOG,
+  WEATHER_RAIN,
+  WEATHER_SNOW,
+  WEATHER_THUNDER,
+};
+
+// WMO 天気コードを天気の種類と表示名にする
+// （コードの一覧: https://open-meteo.com/en/docs の「WMO Weather interpretation codes」）
+static WeatherKind weatherKind(int code, const char** label) {
+  if (code <= 1) {
+    *label = code == 0 ? "Clear" : "Mostly Clear";
+    return WEATHER_CLEAR;
+  }
+  if (code == 2) {
+    *label = "Partly Cloudy";
+    return WEATHER_PARTLY_CLOUDY;
+  }
+  if (code == 3) {
+    *label = "Cloudy";
+    return WEATHER_CLOUDY;
+  }
+  if (code <= 48) {
+    *label = "Fog";
+    return WEATHER_FOG;
+  }
+  if (code <= 57) {
+    *label = "Drizzle";
+    return WEATHER_RAIN;
+  }
+  if (code <= 67) {
+    *label = "Rain";
+    return WEATHER_RAIN;
+  }
+  if (code <= 77) {
+    *label = "Snow";
+    return WEATHER_SNOW;
+  }
+  if (code <= 82) {
+    *label = "Showers";
+    return WEATHER_RAIN;
+  }
+  if (code <= 86) {
+    *label = "Snow Showers";
+    return WEATHER_SNOW;
+  }
+  *label = "Thunderstorm";
+  return WEATHER_THUNDER;
+}
+
+// アイコンの寸法は大きさの単位 u の 10分の k で決める
+#define U(k) ((int16_t)(u * (k) / 10))
+
+// 2px の太さの線
+static void drawThickLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
+  display.drawLine(x0, y0, x1, y1, GxEPD_BLACK);
+  display.drawLine(x0 + 1, y0, x1 + 1, y1, GxEPD_BLACK);
+  display.drawLine(x0, y0 + 1, x1, y1 + 1, GxEPD_BLACK);
+}
+
+// 45°ごとの8方向（×10）
+static const int8_t DIR8[8][2] = {{10, 0}, {7, 7}, {0, 10}, {-7, 7}, {-10, 0}, {-7, -7}, {0, -10}, {7, -7}};
+
+// 太陽（r = 光線の先までの半径）
+static void drawSun(int16_t cx, int16_t cy, int16_t r) {
+  display.fillCircle(cx, cy, r / 2, GxEPD_BLACK);
+  for (int i = 0; i < 8; i++) {
+    drawThickLine(cx + DIR8[i][0] * r * 7 / 100, cy + DIR8[i][1] * r * 7 / 100,
+                  cx + DIR8[i][0] * r / 10, cy + DIR8[i][1] * r / 10);
+  }
+}
+
+// 三日月（r = 半径）
+static void drawMoon(int16_t cx, int16_t cy, int16_t r) {
+  display.fillCircle(cx, cy, r, GxEPD_BLACK);
+  display.fillCircle(cx + r / 2, cy - r * 35 / 100, r * 8 / 10, GxEPD_WHITE);
+}
+
+// 雲の形を塗る（grow だけ大きく）。(cx, by) は雲の底の中央（雲の幅は 5u、高さは 3.2u）
+static void fillCloud(int16_t cx, int16_t by, int16_t u, int16_t grow, uint16_t color) {
+  display.fillCircle(cx - U(14), by - U(10), U(10) + grow, color);
+  display.fillCircle(cx - U(2), by - U(16), U(16) + grow, color);
+  display.fillCircle(cx + U(15), by - U(11), U(11) + grow, color);
+  display.fillRect(cx - U(14), by - U(11), U(29), U(11) + grow, color);
+}
+
+// 雲（白抜きで輪郭だけ。後ろの太陽や月は隠す）
+static void drawCloud(int16_t cx, int16_t by, int16_t u) {
+  fillCloud(cx, by, u, 2, GxEPD_BLACK);
+  fillCloud(cx, by, u, 0, GxEPD_WHITE);
+}
+
+// 天気アイコンを (cx, cy) を中心に描く（約 5u 四方）
+static void drawWeatherIcon(int16_t cx, int16_t cy, int16_t u, WeatherKind kind, bool is_day) {
+  if (kind == WEATHER_CLEAR) {
+    if (is_day) {
+      drawSun(cx, cy, U(24));
+    } else {
+      drawMoon(cx, cy, U(17));
+    }
+    return;
+  }
+
+  if (kind == WEATHER_PARTLY_CLOUDY) {
+    // 左上に太陽（夜は月）、右下に少し小さい雲
+    if (is_day) {
+      drawSun(cx - U(9), cy - U(6), U(18));
+    } else {
+      drawMoon(cx - U(9), cy - U(8), U(13));
+    }
+    drawCloud(cx + U(5), cy + U(21), u * 85 / 100);
+    return;
+  }
+
+  // 雨や雪などは雲の下に描くので、そのぶん雲を上に置く
+  int16_t by = kind >= WEATHER_FOG ? cy + U(7) : cy + U(16);
+  drawCloud(cx, by, u);
+
+  switch (kind) {
+    case WEATHER_FOG:
+      drawThickLine(cx - U(22), by + U(6), cx + U(18), by + U(6));
+      drawThickLine(cx - U(16), by + U(13), cx + U(24), by + U(13));
+      break;
+    case WEATHER_RAIN:
+      for (int i = -1; i <= 1; i++) {
+        int16_t x = cx + i * U(13);
+        drawThickLine(x + U(3), by + U(4), x - U(3), by + U(15));
+      }
+      break;
+    case WEATHER_SNOW:
+      // 雪の結晶（線を60°ずつ3本）
+      for (int i = -1; i <= 1; i++) {
+        int16_t x = cx + i * U(13);
+        int16_t y = by + U(10);
+        int16_t s = U(5);
+        int16_t sy = s * 87 / 100;
+        drawThickLine(x - s, y, x + s, y);
+        drawThickLine(x - s / 2, y - sy, x + s / 2, y + sy);
+        drawThickLine(x - s / 2, y + sy, x + s / 2, y - sy);
+      }
+      break;
+    case WEATHER_THUNDER:
+      // 稲妻（ジグザグ）
+      drawThickLine(cx + U(5), by + U(3), cx - U(4), by + U(12));
+      drawThickLine(cx - U(4), by + U(12), cx + U(4), by + U(12));
+      drawThickLine(cx + U(4), by + U(12), cx - U(5), by + U(22));
+      break;
+    default:
+      break;
+  }
+}
+
+#undef U
+
+// 曜日（0 = 日曜）。Sakamoto の方法（mktime より軽い）
+static int dayOfWeek(int y, int m, int d) {
+  static const uint8_t t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+  if (m < 3) {
+    y--;
+  }
+  return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+// U8g2 フォントで text を cx を中心に描く（y はベースライン）
+static void printCentered(const char* text, int16_t cx, int16_t y) {
+  u8g2Fonts.setCursor(cx - u8g2Fonts.getUTF8Width(text) / 2, y);
+  u8g2Fonts.print(text);
+}
+
+void displayWeather(const WeatherData& weather, bool has_location, bool wifi_connected) {
+  if (!has_location || !weather.valid) {
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(20, 80);
+    display.print("Weather");
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(20, 110);
+    if (!has_location) {
+      display.print("Set the location");
+      display.setCursor(20, 130);
+      display.print("on the settings page");
+    } else if (!wifi_connected) {
+      display.print("WiFi: Not Connected");
+    } else {
+      display.print("Loading...");
+    }
+    return;
+  }
+
+  beginU8g2Fonts();
+  u8g2Fonts.setFontMode(1);  // 文字の背景は塗らない
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
+  u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
+
+  // ===== 上半分：今の天気 =====
+  // 1行目: 天気の名前（左）と取得した時刻（右）
+  const char* label;
+  WeatherKind kind = weatherKind(weather.code, &label);
+  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  u8g2Fonts.setCursor(4, 15);
+  u8g2Fonts.print(label);
+
+  if (weather.fetched_at != 0) {
+    struct tm t;
+    localtime_r(&weather.fetched_at, &t);
+    char updated[16];
+    strftime(updated, sizeof(updated), "Updated %H:%M", &t);
+    u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+    u8g2Fonts.setCursor(196 - u8g2Fonts.getUTF8Width(updated), 13);
+    u8g2Fonts.print(updated);
+  }
+
+  drawWeatherIcon(48, 60, 13, kind, weather.is_day);
+
+  // 気温（整数）と °C を右の列の中央に
+  char text[20];
+  snprintf(text, sizeof(text), "%ld", lroundf(weather.temp));
+  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);
+  int16_t temp_w = u8g2Fonts.getUTF8Width(text);
+  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  int16_t x = 144 - (temp_w + 2 + u8g2Fonts.getUTF8Width("°C")) / 2;
+  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);
+  u8g2Fonts.setCursor(x, 84);
+  u8g2Fonts.print(text);
+  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  u8g2Fonts.setCursor(x + temp_w + 2, 56);
+  u8g2Fonts.print("°C");
+
+  display.drawFastHLine(6, 104, 188, GxEPD_BLACK);
+  display.drawFastVLine(100, 110, 84, GxEPD_BLACK);
+
+  // ===== 下半分：今日（左）と明日（右）の予報 =====
+  static const char* const WEEKDAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  for (int i = 0; i < 2; i++) {
+    const WeatherDay& day = weather.days[i];
+    int16_t cx = 50 + i * 100;
+
+    // 日付（例: 10/17 Sat。date は YYYY-MM-DD）
+    int month = atoi(day.date + 5);
+    int mday = atoi(day.date + 8);
+    if (month >= 1 && month <= 12) {
+      snprintf(text, sizeof(text), "%d/%d %s", month, mday, WEEKDAYS[dayOfWeek(atoi(day.date), month, mday)]);
+      u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+      printCentered(text, cx, 121);
+    }
+
+    const char* day_label;
+    drawWeatherIcon(cx, 146, 8, weatherKind(day.code, &day_label), true);
+
+    // 最高 / 最低気温
+    snprintf(text, sizeof(text), "%ld° / %ld°", lroundf(day.temp_max), lroundf(day.temp_min));
+    u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+    printCentered(text, cx, 184);
+
+    if (day.precip_prob >= 0) {
+      snprintf(text, sizeof(text), "Rain %d%%", day.precip_prob);
+      u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+      printCentered(text, cx, 197);
+    }
+  }
+}
+
+// ============================================================================
+// 画面10: Pressure（天気図風の H/L と等圧線、3時間の気圧の傾向）
 // ============================================================================
 // 中央に H / L と今の海面気圧を出し、1013 hPa との間に 4hPa ごとに等圧線を引く
 // 線が多いほど 1013 から離れた強い高気圧・低気圧。右下のバッジは3時間の変化
@@ -828,7 +1183,7 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
                     ISOBAR_LABEL_OUTER_T, first + last * step);
   }
 
-  // H / L（月日画面と同じ FreeMonoBold24pt7b を2倍にして使う）
+  // H / L（FreeMonoBold24pt7b を2倍にして使う）
   const char* mark = high ? "H" : "L";
   display.setFont(&FreeMonoBold24pt7b);
   display.setTextSize(2);
@@ -841,7 +1196,7 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
   display.setFont();
 
   // 今の海面気圧
-  u8g2Fonts.begin(display);
+  beginU8g2Fonts();
   u8g2Fonts.setFontMode(1);  // 背景を塗らない
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
   u8g2Fonts.setFont(u8g2_font_helvB18_tf);

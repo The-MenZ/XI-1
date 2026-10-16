@@ -8,6 +8,7 @@
 - **e-Paper ディスプレイ**: WeAct 1.54" (200×200px) に見やすく表示
 - **WiFi + NTP**: インターネット接続による正確な時刻管理
 - **設定ページ**: WiFi に接続できないときは本体が AP になり、スマホや PC から WiFi や各種設定を変更できる
+- **天気予報**: 設定ページで選んだ地域の今の天気と、今日・明日の予報を表示（Open-Meteo。API キー不要）
 - **複数画面表示**: 10秒（設定ページで変更可）ごとに異なる情報を自動切り替え
 
 ---
@@ -116,9 +117,10 @@ graph TB
 | **6: WiFi QR** | WiFi QR コード（中央に WiFi マーク。AP モード中は本体の AP） | WiFi接続情報 |
 | **7: Climate Modern** | 温度・湿度の円形ゲージ＋過去24時間グラフ | AHT21・BMP280 |
 | **8: Settings QR** | 設定ページの URL の QR コード（中央に歯車） | 本体の IP アドレス |
-| **9: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
+| **9: Weather** | 今の天気・気温と、今日・明日の天気・最高/最低気温・降水確率 | Open-Meteo（地域は設定ページで選ぶ） |
+| **10: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
 
-画面9の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md) を参照。
+画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md) を参照。
 
 ---
 
@@ -146,7 +148,8 @@ graph TB
 | WiFi | SSID（スキャン一覧から選択。一覧にない場合は手入力）とパスワード。変更すると再起動して接続 |
 | 画面 | 画面ごとの表示 ON/OFF、切り替え間隔（5〜3600秒、既定10秒） |
 | 時刻 | NTP サーバー（既定 `pool.ntp.org`）、タイムゾーン（POSIX 形式、既定 `JST-9`） |
-| 気圧 | 設置場所の標高（−500〜4000 m、既定 0 m）。画面9の気圧を海面の高さに換算するのに使う |
+| 天気の地域 | 市区町村名で候補を探して選ぶ（例: 府中市 → 東京都 府中市 / 広島県 府中市。緯度・経度が入る）。緯度・経度の直接入力も可。空欄にすると未設定 |
+| 気圧 | 設置場所の標高（−500〜4000 m、既定 0 m）。画面10の気圧を海面の高さに換算するのに使う |
 | ガスセンサー | 今の空気を基準値（Ro）として取り直す |
 | 本体 | 再起動、初期化（保存した設定を消して既定値に戻す） |
 
@@ -163,7 +166,8 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面6: WiFi QR
   true,   // 画面7: Climate Modern
   true,   // 画面8: Settings QR
-  true,   // 画面9: Pressure
+  true,   // 画面9: Weather
+  true,   // 画面10: Pressure
 };
 ```
 
@@ -223,6 +227,7 @@ platformio run --target upload
 - **NTP**: 設定ページで指定したサーバー（既定 pool.ntp.org、予備 time.nist.gov）から、指定したタイムゾーン（既定 JST-9）で自動同期
 - **再同期**: ESP-IDF が3時間ごとに自動更新
 - **TX Power**: 最小化設定 (11.5 dBm) で消費電力削減
+- **天気**: WiFi 接続中に30分ごと（失敗したら5分後、地域を変えたらすぐ）Open-Meteo から取得（詳しくは [WEATHER_SCREEN.md](./WEATHER_SCREEN.md)）
 
 ---
 
@@ -235,7 +240,7 @@ platformio run --target upload
 初回フルリフレッシュ (約1.5秒)
   ↓
 切り替え間隔（既定10秒）ごとにセンサー読み込み → 画面更新 (部分リフレッシュ)
-  ↓
+  ↓                              （その合間に、天気の地域が設定されていれば30分ごとに天気を取得）
 10分ごとにゴースト軽減のためフルリフレッシュ → ループ
 ```
 
@@ -268,6 +273,7 @@ platformio run --target upload
 - [MICS5524_INTEGRATION.md](./MICS5524_INTEGRATION.md) - ガスセンサー統合
 - [WIFI_QR_SCREEN.md](./WIFI_QR_SCREEN.md) - WiFi QR コード画面
 - [MONTHDAY_SCREEN.md](./MONTHDAY_SCREEN.md) - 月日表示画面
+- [WEATHER_SCREEN.md](./WEATHER_SCREEN.md) - 天気画面と地域の設定
 - [AVAILABLE_FONTS.md](./AVAILABLE_FONTS.md) - 使用できるフォント
 - [FONT_SYSTEM_ALTERNATIVES.md](./FONT_SYSTEM_ALTERNATIVES.md) - フォント方式の比較（U8g2 など）
 - [DISPLAY_REFACTORING.md](./DISPLAY_REFACTORING.md) - 画面コード分割の設計メモ（当時）
@@ -285,6 +291,7 @@ XI-1/
 │   ├── network.cpp            # WiFi 接続と AP モード
 │   ├── web_settings.cpp       # 設定ページ（Web サーバー）
 │   ├── settings.cpp           # 設定の NVS への保存・読み込み
+│   ├── weather.cpp            # 天気予報の取得（Open-Meteo）
 │   ├── Custom_ENS160.cpp      # 空気品質センサー
 │   ├── Custom_AHT21.cpp       # 温湿度センサー
 │   ├── Custom_BMP280.cpp      # 気圧センサー
@@ -298,6 +305,7 @@ XI-1/
 │   ├── network.h              # WiFi 接続と AP モード
 │   ├── web_settings.h         # 設定ページ
 │   ├── settings.h             # 設定（NVS）
+│   ├── weather.h              # 天気予報
 │   ├── adc_util.h             # ADC 電圧変換（eFuse 校正）
 │   ├── Custom_MAX9814.h       # マイク入力（ヘッダのみ）
 │   └── Custom_*.h             # センサーヘッダ

@@ -29,6 +29,40 @@ static const char PAGE_HEAD[] =
 
 static const char PAGE_TAIL[] = "</body></html>";
 
+// 天気の地域の候補探し（市区町村名 → 候補 → 緯度・経度）。本体ではなくブラウザから
+// CSIS シンプルジオコーディング（東京大学）に問い合わせるので、本体は検索の処理を持たない。
+// 候補は自動では選ばない（同じ名前の別の場所を選んだまま気づかないのを防ぐ）。
+// 候補を選ぶと、地名（hidden）と緯度・経度の入力欄に値が入る。探し直したときや
+// 「選んでください」に戻したときは、ページを開いたときの値（保存済みの値）に戻す
+// （hidden の input は value を変えると defaultValue も変わるので、最初に覚えておく）。iLvl は住所の細かさ
+// （1 = 都道府県、3 = 市区町村、5 = 町・大字 …。0 は重複などなので除く）で、粗い順に並べる
+static const char WEATHER_SCRIPT[] =
+  "<script>"
+  "var wl=[],$=i=>document.getElementById(i),wi=['wn','wla','wlo'],ws=wi.map(i=>$(i).value);"
+  "function wreset(){wi.forEach((i,k)=>$(i).value=ws[k])}"
+  "function geo(){"
+    "wreset();$('wr').hidden=true;$('wm').textContent='検索中…';"
+    "fetch('https://geocode.csis.u-tokyo.ac.jp/cgi-bin/simple_geocode.cgi?charset=UTF8&addr='"
+      "+encodeURIComponent($('wq').value.trim()))"
+    ".then(r=>r.text()).then(t=>{"
+      "var x=new DOMParser().parseFromString(t,'text/xml');"
+      "wl=[...x.getElementsByTagName('candidate')].map(c=>{"
+        "var g=k=>c.getElementsByTagName(k)[0].textContent;"
+        "return{n:g('address').split('/').join(' '),la:g('latitude'),lo:g('longitude'),l:+g('iLvl')}"
+      "}).filter(c=>c.l>0).sort((a,b)=>a.l-b.l);"
+      "$('wr').innerHTML='';$('wr').add(new Option(wl.length+'件の候補から選んでください',''));"
+      "wl.forEach((c,i)=>$('wr').add(new Option(c.n,i)));"
+      "$('wr').hidden=!wl.length;"
+      "$('wm').textContent=wl.length?'':'見つかりませんでした（地域は変わっていません）'"
+    "}).catch(()=>{$('wm').textContent='検索できません（インターネットに未接続）。地域は変わっていません'})}"
+  "function wpick(){"
+    "var c=wl[$('wr').value];if(!c){wreset();$('wm').textContent='';return}"
+    "$('wn').value=c.n;$('wla').value=c.la;$('wlo').value=c.lo;"
+    "$('wm').textContent='保存すると「'+c.n+'」に変わります'}"
+  "function wman(){"
+    "$('wn').value='';$('wm').textContent='保存すると緯度・経度で指定した地点に変わります'}"
+  "</script>";
+
 // HTML に埋め込む値（SSID など）のエスケープ
 static String htmlEscape(const String& value) {
   String escaped;
@@ -44,6 +78,32 @@ static String htmlEscape(const String& value) {
     }
   }
   return escaped;
+}
+
+// 緯度・経度として受け付ける文字列か（10進数で、整数部の絶対値が limit 以下）
+// 天気 API の URL にそのまま入れるので、数字・先頭の符号・小数点以外の文字は受け付けない
+// （Google マップからコピーすると小数点以下が十数桁になることがあるので、長さは20文字まで）
+static bool isCoordinate(const String& value, int limit) {
+  if (value.length() == 0 || value.length() > 20) {
+    return false;
+  }
+  bool has_digit = false;
+  bool has_dot = false;
+  for (unsigned int i = 0; i < value.length(); i++) {
+    char c = value[i];
+    if (c == '-' && i == 0) {
+      continue;
+    }
+    if (c == '.' && !has_dot) {
+      has_dot = true;
+      continue;
+    }
+    if (!isdigit(c)) {
+      return false;
+    }
+    has_digit = true;
+  }
+  return has_digit && abs(value.toInt()) <= limit;
 }
 
 static void sendPage(const String& body) {
@@ -63,7 +123,7 @@ static void handleRoot() {
   }
 
   String html;
-  html.reserve(3000);
+  html.reserve(4500);
 
   String message = server.arg("m");
   if (message == "saved") {
@@ -128,6 +188,29 @@ static void handleRoot() {
           "タイムゾーン（例: JST-9）<input type=text name=tz value=\"" + htmlEscape(settings.timezone) + "\">"
           "</fieldset>";
 
+  // 天気の地域：市区町村名で候補を探して選ぶ（Enter で送信せずに候補を探す）
+  // 検索欄は送信しない。保存するのは選んだ候補の地名（hidden）と緯度・経度
+  String current = settings.weather_place.length() > 0 ? htmlEscape(settings.weather_place)
+                   : hasWeatherLocation()               ? String("緯度・経度で指定")
+                                                        : String("未設定");
+  html += "<fieldset><legend>天気の地域</legend>"
+          "現在: <b>" + current + "</b>"
+          "<input type=text id=wq placeholder='市区町村名（例: 府中市）' "
+          "onkeydown=\"if(event.key=='Enter'){event.preventDefault();geo()}\">"
+          "<button type=button onclick=geo()>候補を探す</button>"
+          "<select id=wr onchange=wpick() hidden></select>"
+          "<div id=wm></div>"
+          "<input type=hidden id=wn name=wn value=\"" + htmlEscape(settings.weather_place) + "\">"
+          "緯度<input type=number step=any min=-90 max=90 id=wla name=wla oninput=wman() value=\"" +
+          settings.weather_lat + "\">"
+          "経度<input type=number step=any min=-180 max=180 id=wlo name=wlo oninput=wman() value=\"" +
+          settings.weather_lon + "\">"
+          "<small>候補を探すには、スマホや PC がインターネットにつながっている必要があります"
+          "（APモード中は緯度・経度を直接入力）。緯度・経度を空欄にすると未設定に戻ります。"
+          "地名の検索: <a href=https://geocode.csis.u-tokyo.ac.jp/>CSISシンプルジオコーディング実験</a>を利用。"
+          "天気データ: <a href=https://open-meteo.com/>Open-Meteo.com</a></small>"
+          "</fieldset>";
+
   // 気圧（Pressure 画面の H/L は海面の高さに換算した気圧で判定する）
   html += "<fieldset><legend>気圧</legend>"
           "設置場所の標高（m。建物の上の階なら階の高さも足す）<input type=number name=alt min=" +
@@ -135,6 +218,7 @@ static void handleRoot() {
           "</fieldset>";
 
   html += "<button>保存</button></form>";
+  html += WEATHER_SCRIPT;
 
   html += "<fieldset><legend>ガスセンサー（MICS5524）</legend>"
           "<form method=post action=/calib><button>今の空気を基準にする</button></form>"
@@ -187,6 +271,23 @@ static void handleSave() {
   tz.trim();
   if (tz.length() > 0) {
     settings.timezone = tz;
+  }
+
+  // 天気の地域（緯度・経度のどちらかが空欄なら未設定に戻す。数値でなければ変更しない）
+  String place = server.arg("wn");
+  place.trim();
+  String lat = server.arg("wla");
+  String lon = server.arg("wlo");
+  lat.trim();
+  lon.trim();
+  if (lat.length() == 0 || lon.length() == 0) {
+    settings.weather_place = "";
+    settings.weather_lat = "";
+    settings.weather_lon = "";
+  } else if (isCoordinate(lat, 90) && isCoordinate(lon, 180)) {
+    settings.weather_place = place;
+    settings.weather_lat = lat;
+    settings.weather_lon = lon;
   }
 
   saveSettings();

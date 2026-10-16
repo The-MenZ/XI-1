@@ -45,7 +45,7 @@ void displayClimateModern(                                                    //
   int history_count, int history_index
 );
 void displaySettingsQR(const String& url);                                    // 画面8
-void displayPressure(                                                         // 画面9
+void displayPressure(                                                         // 画面10
   const BMP280Data& bmp280_data, bool bmp280_enabled,
   float trend_3h  // 約3時間前からの気圧の変化（hPa）。履歴が3時間分たまるまでは NAN
 );
@@ -231,7 +231,12 @@ switch(display_mode) {
     displaySettingsQR(getSettingsURL());
     break;
 
-  case 9:
+  case SCREEN_WEATHER:
+    // 天気画面 - 取得済みの天気（weather.cpp）と、地域の設定・WiFi の状態を渡す
+    displayWeather(getWeather(), hasWeatherLocation(), isWiFiConnected());
+    break;
+
+  case 10:
     // Pressure 画面 - 気圧データと、約3時間前からの変化を渡す
     displayPressure(bmp280_data, sensor_bmp280_enabled, pressureTrend3h(bmp280_data.pressure));
     break;
@@ -239,6 +244,7 @@ switch(display_mode) {
 ```
 
 - `isWiFiConnected()` は関数（`network.cpp`。`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
+- 天気は `loop()` の先頭で呼ぶ `weatherLoop()`（`weather.cpp`）が取得して保持し、`getWeather()` で `WeatherData` を受け取ります。描画関数は通信をしません
 - 時刻同期の判定は `isTimeSynced()`（`time(nullptr) > 1704067200`、つまり 2024-01-01 以降なら同期済み）
 - `temp_history` / `humid_history` は `HISTORY_SIZE`（144、`display_screens.h` で定義）要素のリングバッファで、10分ごとに保存されます。表示側の添字計算も同じ `HISTORY_SIZE` を使うので、件数を変えるときは定義を1か所変えるだけで済みます
 - 気圧の履歴 `pressure_history` は `main.cpp` の中だけで使う18件のリングバッファ（10分ごと、hPa×10 の整数）。表示側には `pressureTrend3h()` で計算した変化だけを渡します

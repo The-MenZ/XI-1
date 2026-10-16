@@ -1,7 +1,7 @@
 # 🌀 気圧画面（天気図風の H / L と等圧線）
 
 ## 📋 概要
-天気図の高気圧・低気圧のマークに見立てて、今の気圧がどれだけ高いか・低いかをひと目で分かるようにした画面です（画面9: Pressure）。右下のバッジで、約3時間前から気圧が上がったか下がったかも出します。
+天気図の高気圧・低気圧のマークに見立てて、今の気圧がどれだけ高いか・低いかをひと目で分かるようにした画面です（画面10: Pressure）。右下のバッジで、約3時間前から気圧が上がったか下がったかも出します。
 
 ---
 
@@ -70,7 +70,7 @@ BMP280 が測るのは設置場所の気圧で、高い所ほど低く出ます�
 
 ### ヘッダー宣言 (`display_screens.h`)
 ```cpp
-// 画面9: Pressure（天気図風の H/L と等圧線、3時間の気圧の傾向）
+// 画面10: Pressure（天気図風の H/L と等圧線、3時間の気圧の傾向）
 void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float trend_3h);
 ```
 
@@ -99,7 +99,7 @@ int16_t pressure_history[PRESSURE_HISTORY_SIZE];  // 設置場所の気圧 × 10
 
 ### 呼び出し (`main.cpp`)
 ```cpp
-case 9:
+case 10:
   // Pressure（天気図風の H/L と等圧線、3時間の傾向）
   displayPressure(bmp280_data, sensor_bmp280_enabled, pressureTrend3h(bmp280_data.pressure));
   break;

@@ -14,6 +14,7 @@
 #include "settings.h"
 #include "network.h"
 #include "web_settings.h"
+#include "weather.h"
 
 // ============================================================================
 // GxEPD2 用フォント定義
@@ -137,9 +138,10 @@ uint8_t pressure_history_count = 0;
 // 無効な画面はスキップして次の有効な画面を表示します
 // ============================================================================
 // 画面の番号は NVS に保存した screen_mask のビット位置なので、新しい画面は末尾に足す
-#define NUM_SCREENS 10
+#define NUM_SCREENS 11
 #define SCREEN_WIFI_QR 6
 #define SCREEN_SETTINGS_QR 8
+#define SCREEN_WEATHER 9
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
@@ -150,7 +152,8 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
   true,   // 画面8: Settings QR Code (設定ページの URL)
-  true,   // 画面9: Pressure (天気図風の H/L と等圧線)
+  true,   // 画面9: Weather (天気。地域は設定ページで選ぶ)
+  true,   // 画面10: Pressure (天気図風の H/L と等圧線)
 };
 
 // 設定ページのチェックボックスに出す画面名
@@ -164,6 +167,7 @@ const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "WiFi QR",
   "Climate Modern（温湿度グラフ）",
   "Settings QR（設定ページ）",
+  "Weather（天気）",
   "Pressure（気圧 H/L）",
 };
 
@@ -440,6 +444,14 @@ void setup() {
     Serial.println("   ⚠️  未同期（WiFi接続後に自動で同期）");
   }
   
+  Serial.println("\n🌤  天気の地域:");
+  if (hasWeatherLocation()) {
+    Serial.printf("   ✅ %s（%s, %s）\n", settings.weather_place.c_str(),
+                  settings.weather_lat.c_str(), settings.weather_lon.c_str());
+  } else {
+    Serial.println("   ⚠️  未設定（設定ページで選ぶ）");
+  }
+
   Serial.println("\n📊 センサー初期化状態:");
   Serial.printf("   %s ENS160 (空気品質)\n", sensor_ens160_enabled ? "✅" : "⚠️");
   Serial.printf("   %s AHT21 (温湿度)\n", sensor_aht21_enabled ? "✅" : "⚠️");
@@ -508,6 +520,9 @@ void loop() {
   // WiFi の監視（つながらなければ AP モードへ）と設定ページのリクエスト処理
   networkLoop();
   webSettingsLoop();
+
+  // 天気の取得（30分ごと、地域を変えたときはすぐ）
+  weatherLoop();
 
   // 切り替え間隔（既定10秒）ごとにセンサー値取得 & 画面更新
   if (current_time - last_update >= settings.interval_sec * 1000UL || first_display) {
@@ -789,7 +804,11 @@ void loop() {
           // 設定ページの URL の QRコード
           displaySettingsQR(getSettingsURL());
           break;
-        case 9:
+        case SCREEN_WEATHER:
+          // 天気（今の天気と、今日・明日の予報）
+          displayWeather(getWeather(), hasWeatherLocation(), isWiFiConnected());
+          break;
+        case 10:
           // Pressure（天気図風の H/L と等圧線、3時間の傾向）
           displayPressure(bmp280_data, sensor_bmp280_enabled, pressureTrend3h(bmp280_data.pressure));
           break;
