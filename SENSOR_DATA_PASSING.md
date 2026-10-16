@@ -55,7 +55,7 @@ void displayPressure(                                                         //
 
 | 構造体 | フィールド |
 |--------|-----------|
-| `ENS160Data` | `eco2`（ppm）, `tvoc`（ppb）, `aqi`（1〜5。0 は未測定） |
+| `ENS160Data` | `eco2`（ppm）, `tvoc`（ppb）, `aqi`（1〜5。0 は未測定）, `validity`（有効フラグ。0 = 通常、1 = ウォームアップ中、2 = 初回起動中、3 = 無効）, `warmup_progress`（ウォームアップの進み具合 0〜1） |
 | `AHT21Data` | `temperature`, `humidity`（自己発熱補正後）, `raw_temperature`, `raw_humidity`（生値） |
 | `BMP280Data` | `temperature`（°C）, `pressure`（hPa、設置場所の気圧）, `sea_level_pressure`（hPa、設定ページの標高で海面の高さに換算した気圧）, `altitude`（m） |
 | `VEML7700Data` | `lux`, `white`, `als`（ALS 生データ） |
@@ -122,7 +122,9 @@ void displayClimate(
 ENS160Data test_data = {
   .eco2 = 400,
   .tvoc = 50,
-  .aqi = 1   // 1=Excellent（0 は未測定扱いで "unknown" と表示される）
+  .aqi = 1,  // 1=Excellent（0 は未測定扱いで、ウォームアップ中のブラインドになる）
+  .validity = ENS160_VALIDITY_NORMAL,
+  .warmup_progress = 1.0f
 };
 displayAirQuality(test_data, true);  // ← テスト実行
 ```
@@ -130,7 +132,7 @@ displayAirQuality(test_data, true);  // ← テスト実行
 ### ✅ **グローバル変数への依存を削減**
 - センサーデータの `extern` 宣言が不要
 - スコープが明確
-- ※ `display` オブジェクト（`display_screens.h`）と `getAQIStatusEnglish()`（`main.cpp` で定義し `display_screens.cpp` で `extern` 宣言）は引き続き `extern` で共有
+- ※ `display` オブジェクト（`display_screens.h`）は引き続き `extern` で共有
 
 ### ✅ **再利用性が高い**
 異なるデータソース（ファイル、データベース等）でも同じ表示関数が使用可能

@@ -50,18 +50,22 @@ ESP32-C3 + e-paper ディスプレイが **11の画面を10秒ごと（設定ペ
 
 ### 📱 **画面0: Air Quality（空気質）** - `displayAirQuality()`
 ```
-Air Quality
-eCO2: 410ppm
-TVOC: 25ppb
-AQI:  1/5
-Excellent
+  AQI      ┏━━━━━━━━━┓
+ ╭───╮     ┃ ﹀﹀  ☀ ┃
+     │     ┣━━━━━━━━━┫
+  ───╯     ┃  /\     ┃
+ ╰───╯    ━┻━━━━━━━━━┻━
+★★★☆☆
+         STUFFY
+   eCO2 900  TVOC 400
 ```
 
 **表示内容:**
-- eCO2（推定CO2濃度, ppm）
-- TVOC（揮発性有機化合物, ppb）
-- AQI（1〜5。1=Excellent, 2=Good, 3=Moderate, 4=Poor, 5=Unhealthy。0 は未測定で `unknown`）
-- AQI ステータス（英語。`main.cpp` の `getAQIStatusEnglish()`）
+- AQI（ENS160 の AQI-UBA、1〜5）の大きな白抜きの数字と星（AQI 1 で★5つ）
+- 右の上げ下げ窓。空気が悪いほど部屋全体に点々のもやがかかり、AQI 4 で下の窓を少し上げ、AQI 5 で全開にする（窓の外はいつも晴れ）
+- 下の帯に、AQI 1〜3 は `FRESH` / `GOOD` / `STUFFY`、4・5 は `OPEN!` / `OPEN!!`。その下に eCO2（ppm）と TVOC（ppb）
+- ENS160 のウォームアップ中（起動から約3分。新品を初めて使うときは約1時間）は `?` と閉じたブラインドで、10% 進むごとに羽根が1枚上がる
+- 詳しくは [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)
 
 ENS160 未接続時は `ENS160 / Not / Connected` と表示。
 
@@ -287,6 +291,7 @@ case 11:
   eCO2: 410 ppm
   TVOC: 25 ppb
   AQI : 1 (優秀)
+  （ENS160 のウォームアップ中は、この下に「⏳ ENS160 準備中（有効フラグ 1、進み具合 8%）」）
   🌡️  温度(AHT21): 24.12 °C (生値 34.12 °C)
   💧 湿度(AHT21): 44.75 % (生値 25.10 %)
   ...
@@ -399,6 +404,7 @@ const unsigned long FULL_REFRESH_INTERVAL = 5 * 60 * 1000;  // 5分に変更
 - `src/main.cpp` - センサー読み取り・画面切り替え・履歴保存
 - `include/display_screens.h` / `src/display_screens.cpp` - 各画面の描画関数
 - `SENSOR_DATA_PASSING.md` - 描画関数へのデータの渡し方
+- `AIR_QUALITY_SCREEN.md` - 空気質画面
 - `MONTHDAY_SCREEN.md` - 月日画面
 - `WIFI_QR_SCREEN.md` - WiFi QR 画面
 - `MICS5524_INTEGRATION.md` - ガスセンサー
@@ -407,6 +413,6 @@ const unsigned long FULL_REFRESH_INTERVAL = 5 * 60 * 1000;  // 5分に変更
 
 ---
 
-**最終更新**: 2026年10月16日  
+**最終更新**: 2026年10月17日  
 **バージョン**: 2.0  
 **対応: ESP32-C3 Super Mini (K2) + WeAct 1.54" e-paper**
