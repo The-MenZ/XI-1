@@ -109,10 +109,11 @@ graph TB
 | **0: Air Quality** | eCO2・TVOC・AQI | ENS160 |
 | **1: Climate** | 温度・湿度・気圧・高度 | AHT21・BMP280 |
 | **2: Ambience** | 照度・マイク音量 | VEML7700・MAX9814 |
-| **3: Gas Sensor** | ガス濃度・抵抗値 | MICS5524 |
-| **4: Date & Time** | 現在時刻 | NTP同期 |
+| **3: Gas Sensor** | Rs/Ro（起動後3分間は Warming up） | MICS5524 |
+| **4: Date & Time** | 現在時刻（既定で無効） | NTP同期 |
 | **5: Month Day** | 月日表示 | NTP同期 |
 | **6: WiFi QR** | WiFi QR コード | WiFi接続情報 |
+| **7: Climate Modern** | 温度・湿度の円形ゲージ＋過去24時間グラフ | AHT21・BMP280 |
 
 ---
 
@@ -142,6 +143,7 @@ const bool SCREEN_ENABLED[NUM_SCREENS] = {
   false,  // 画面4: Date & Time (無効)
   true,   // 画面5: Month Day
   true,   // 画面6: WiFi QR
+  true,   // 画面7: Climate Modern
 };
 ```
 
@@ -176,7 +178,8 @@ platformio run --target upload
 
 ### 💡 VEML7700 (光/照度)
 - **I2C アドレス**: 0x10
-- **測定範囲**: 0～120,000 lux
+- **測定範囲**: 0～120,000 lux（センサーの仕様上の最大）
+- **設定**: ゲイン 1/8・積分時間 100ms（この設定で約30,000 luxまで測定）。レジスタ値は名前順ではないため、ライブラリの定数 `VEML7700_GAIN_1_8` / `VEML7700_IT_100MS` で指定する
 - **用途**: 環境光検知
 
 ### 🔊 MAX9814 (マイク)
@@ -184,10 +187,12 @@ platformio run --target upload
 - **用途**: 騒音レベル測定
 
 ### 💨 MICS5524 (ガスセンサー)
+- **基板**: Adafruit MiCS5524 ブレークアウト（電源 **5V**）
 - **入力**: GPIO3 (ADC1_CH3)
-- **ヒーター制御**: GPIO10
-- **検出対象**: CO、NH3、NO、NO2 ほか
+- **ヒーター制御**: GPIO10（LOW でヒーター ON）
+- **検出対象**: CO、エタノール、水素、アンモニア、メタンなどの還元性ガス（種類は区別できない）
 - **用途**: 有害ガス検知
+- **注意**: 5V 給電のため、ガス濃度が非常に高いと出力が 3.3V（ESP32 の入力上限）を超えることがある
 - **キャリブレーション**: 起動後ヒーターが温まる3分間はウォームアップ表示。その後の空気を基準 (Ro) にするため、新鮮な空気の中で起動する
 
 ---
@@ -238,7 +243,13 @@ platformio run --target upload
 - [MULTI_SCREEN_GUIDE.md](./MULTI_SCREEN_GUIDE.md) - 画面カスタマイズ方法
 - [SENSOR_DATA_PASSING.md](./SENSOR_DATA_PASSING.md) - センサーデータ構造
 - [VEML7700_QUICK_START.md](./VEML7700_QUICK_START.md) - 光センサー設定
+- [VEML7700_INTEGRATION.md](./VEML7700_INTEGRATION.md) - 光センサー統合
 - [MICS5524_INTEGRATION.md](./MICS5524_INTEGRATION.md) - ガスセンサー統合
+- [WIFI_QR_SCREEN.md](./WIFI_QR_SCREEN.md) - WiFi QR コード画面
+- [MONTHDAY_SCREEN.md](./MONTHDAY_SCREEN.md) - 月日表示画面
+- [AVAILABLE_FONTS.md](./AVAILABLE_FONTS.md) - 使用できるフォント
+- [FONT_SYSTEM_ALTERNATIVES.md](./FONT_SYSTEM_ALTERNATIVES.md) - フォント方式の比較（U8g2 など）
+- [DISPLAY_REFACTORING.md](./DISPLAY_REFACTORING.md) - 画面コード分割の設計メモ（当時）
 
 ---
 
@@ -255,10 +266,13 @@ XI-1/
 │   ├── Custom_BMP280.cpp      # 気圧センサー
 │   ├── Custom_VEML7700.cpp    # 光センサー
 │   ├── Custom_MICS5524.cpp    # ガスセンサー
-│   └── Custom_MAX9814.cpp     # マイク入力
+│   └── u8g2_gfx_font_test.cpp # U8g2 フォントのテスト（別 env でのみビルド）
 ├── include/
-│   ├── wifi_config.h          # WiFi 接続設定 ⭐ 要編集
+│   ├── wifi_config.h          # WiFi 接続設定 ⭐ 要作成（.example をコピー）
+│   ├── wifi_config.h.example  # WiFi 設定のひな形
 │   ├── display_screens.h      # 画面ヘッダ
+│   ├── adc_util.h             # ADC 電圧変換（eFuse 校正）
+│   ├── Custom_MAX9814.h       # マイク入力（ヘッダのみ）
 │   └── Custom_*.h             # センサーヘッダ
 └── README.md                  # このファイル
 ```

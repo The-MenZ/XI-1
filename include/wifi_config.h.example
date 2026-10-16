@@ -1,0 +1,10 @@
+#ifndef WIFI_CONFIG_H
+#define WIFI_CONFIG_H
+
+// WiFi接続設定
+// このファイルを wifi_config.h にコピーして、あなたのWiFi情報に編集してください
+#define WIFI_SSID "YOUR_SSID"
+#define WIFI_PASSWORD "YOUR_PASSWORD"
+
+#endif
+
