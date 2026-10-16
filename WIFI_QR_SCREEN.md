@@ -249,7 +249,8 @@ wifi_string = "WIFI:T:WEP;S:" + escapeWiFiQRField(ssid) +
 
 - ✅ 容量に応じたバージョン選択でバッファ溢れを解消（誤り訂正レベル Q の容量は ricmoo/QRCode のテーブルから計算して確認）
 - ✅ アイコン入りの画面を PC 上で同じコードから画像にし、zbar と OpenCV で読み取れることを確認（v2〜v6、URL・AP の WiFi QR・家の WiFi QR）
-- ⬜ 実機の e-Paper をスマホで読み取る確認は未実施
+- ✅ 実機の e-Paper をスマホで読み取り、AP への接続（WiFi QR）と設定ページを開くこと（Settings QR）を確認
+- ✅ 設定ページで WiFi を保存し、再起動後に接続できることを実機で確認
 
 ---
 
