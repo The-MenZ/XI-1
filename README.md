@@ -118,6 +118,9 @@ graph TB
 | **7: Climate Modern** | 温度・湿度の円形ゲージ＋過去24時間グラフ | AHT21・BMP280 |
 | **8: Settings QR** | 設定ページの URL の QR コード（中央に歯車） | 本体の IP アドレス |
 | **9: Weather** | 今の天気・気温と、今日・明日の天気・最高/最低気温・降水確率 | Open-Meteo（地域は設定ページで選ぶ） |
+| **10: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
+
+画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md) を参照。
 
 ---
 
@@ -146,6 +149,7 @@ graph TB
 | 画面 | 画面ごとの表示 ON/OFF、切り替え間隔（5〜3600秒、既定10秒） |
 | 時刻 | NTP サーバー（既定 `pool.ntp.org`）、タイムゾーン（POSIX 形式、既定 `JST-9`） |
 | 天気の地域 | 市区町村名で候補を探して選ぶ（例: 府中市 → 東京都 府中市 / 広島県 府中市。緯度・経度が入る）。緯度・経度の直接入力も可。空欄にすると未設定 |
+| 気圧 | 設置場所の標高（−500〜4000 m、既定 0 m）。画面10の気圧を海面の高さに換算するのに使う |
 | ガスセンサー | 今の空気を基準値（Ro）として取り直す |
 | 本体 | 再起動、初期化（保存した設定を消して既定値に戻す） |
 
@@ -163,6 +167,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面7: Climate Modern
   true,   // 画面8: Settings QR
   true,   // 画面9: Weather
+  true,   // 画面10: Pressure
 };
 ```
 

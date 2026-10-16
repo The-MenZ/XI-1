@@ -116,6 +116,7 @@ case 5: {
 | 7 | Climate Modern | 温湿度の円形ゲージ＋過去24時間グラフ | 有効 |
 | 8 | Settings QR | 設定ページの QR コード | 有効 |
 | 9 | Weather | 今の天気と今日・明日の予報 | 有効 |
+| 10 | Pressure | 天気図風の H/L と等圧線＋3時間の傾向 | 有効 |
 
 ---
 
@@ -141,6 +142,8 @@ Climate Modern
 Settings QR
     ↓ 10秒
 Weather
+    ↓ 10秒
+Pressure
     ↓ 10秒
 [リピート]
 ```

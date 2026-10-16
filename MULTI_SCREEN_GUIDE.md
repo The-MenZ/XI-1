@@ -2,11 +2,11 @@
 
 ## 📱 機能概要
 
-ESP32-C3 + e-paper ディスプレイが **10の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
+ESP32-C3 + e-paper ディスプレイが **11の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
 
-- 画面は `src/main.cpp` の `NUM_SCREENS`（= 10）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
+- 画面は `src/main.cpp` の `NUM_SCREENS`（= 11）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
 - 無効な画面はスキップされ、次の有効な画面が表示される（`isScreenEnabled()` / `nextEnabledScreen()`）
-- デフォルトでは **画面4: Date & Time だけが無効**（9画面をローテーション）
+- デフォルトでは **画面4: Date & Time だけが無効**（10画面をローテーション）
 - AP モード中（WiFi に接続できないとき）は、画面6: WiFi QR と画面8: Settings QR だけを交互に表示する
 - 各画面の描画関数は `src/display_screens.cpp` にあり、センサーデータは引数で受け取る（→ `SENSOR_DATA_PASSING.md`）
 
@@ -34,11 +34,13 @@ ESP32-C3 + e-paper ディスプレイが **10の画面を10秒ごと（設定ペ
 │ 画面8: Settings QR      (本体の IP)         │
 │ ↓ 10秒                                      │
 │ 画面9: Weather          (Open-Meteo)        │
+│ ↓ 10秒                                      │
+│ 画面10: Pressure        (BMP280)            │
 │ ↓ 10秒 (画面0へループ)                      │
 └─────────────────────────────────────────────┘
 ```
 
-画面番号は `display_mode` の値（0〜9）です。シリアル出力では `Screen 1/10`〜`Screen 10/10`（`display_mode + 1`）と表示されます。
+画面番号は `display_mode` の値（0〜10）です。シリアル出力では `Screen 1/11`〜`Screen 11/11`（`display_mode + 1`）と表示されます。
 
 ---
 
@@ -77,7 +79,7 @@ Alt:   15m
 **表示内容:**
 - 温度（AHT21。自己発熱補正済み。AHT21 がない場合は BMP280 の温度）
 - 相対湿度（AHT21。補正後の温度に合わせて換算し直した値）
-- 気圧（BMP280, hPa）
+- 気圧（BMP280, hPa。設置場所の気圧で、海面気圧への換算はしない。換算した値は画面10で表示）
 - 高度（BMP280, m。絶対値で表示）
 
 AHT21 の補正量は `main.cpp` の `AHT21_TEMP_OFFSET`（10 °C）。両センサーとも未接続なら `No / Climate / Sensors`。
@@ -194,6 +196,18 @@ HUMIDITY
 
 ---
 
+### 📱 **画面10: Pressure（気圧 H/L）** - `displayPressure()`
+
+天気図風に、中央へ巨大な **H**（1013 hPa 以上）または **L**（未満）と今の海面気圧を出し、1013 hPa との間に 4 hPa ごとの等圧線を引きます。線が多いほど 1013 から離れた強い高気圧・低気圧です。右下の黒いバッジは約3時間前からの気圧の変化（▲ / ▼ / ▲▲ / ▼▼ / →）。
+
+- 気圧は設定ページの「設置場所の標高」で海面の高さに換算した値（`BMP280Data::sea_level_pressure`）
+- 傾向は `main.cpp` の `pressure_history`（10分ごと × 18件、hPa×10 の整数）から計算。起動後 約3時間はバッジを出さない
+- BMP280 未接続時は `BMP280 / Not / Connected` と表示
+
+詳細は `PRESSURE_SCREEN.md`。
+
+---
+
 ## 🔧 カスタマイズ
 
 ### 1. 画面の有効/無効を切り替える
@@ -203,7 +217,7 @@ HUMIDITY
 保存する前（初回起動時・初期化後）の既定値は `src/main.cpp` の `SCREEN_DEFAULT_ENABLED` です。
 
 ```cpp
-#define NUM_SCREENS 10
+#define NUM_SCREENS 11
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
@@ -215,6 +229,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
   true,   // 画面8: Settings QR Code (設定ページの URL)
   true,   // 画面9: Weather (天気。地域は設定ページで選ぶ)
+  true,   // 画面10: Pressure (天気図風の H/L と等圧線)
 };
 ```
 
@@ -224,7 +239,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 
 ### 3. 画面の順序を変更
 
-表示順は `display_mode` の番号順（0→9）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
+表示順は `display_mode` の番号順（0→10）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
 
 ### 4. 画面の追加
 
@@ -237,18 +252,18 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 void displayCustom(const AHT21Data& aht21_data, bool aht21_enabled);
 
 // main.cpp
-#define NUM_SCREENS 11
+#define NUM_SCREENS 12
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
-  // ... 既存の10画面 ...
-  true,   // 画面10: Custom
+  // ... 既存の11画面 ...
+  true,   // 画面11: Custom
 };
 const char* const SCREEN_NAMES[NUM_SCREENS] = {
-  // ... 既存の10画面 ...
+  // ... 既存の11画面 ...
   "Custom",
 };
 
 // loop() の switch 内
-case 10:
+case 11:
   displayCustom(aht21_data, sensor_aht21_enabled);
   break;
 ```
@@ -261,7 +276,7 @@ case 10:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📺 画面: Screen 1/10
+📺 画面: Screen 1/11
 📊 センサーデータ更新:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   eCO2: 410 ppm
