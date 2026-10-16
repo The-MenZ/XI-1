@@ -225,10 +225,16 @@ switch(display_mode) {
     // 設定ページ QR 画面 - 設定ページの URL を渡す
     displaySettingsQR(getSettingsURL());
     break;
+
+  case SCREEN_WEATHER:
+    // 天気画面 - 取得済みの天気（weather.cpp）と、地域の設定・WiFi の状態を渡す
+    displayWeather(getWeather(), hasWeatherLocation(), isWiFiConnected());
+    break;
 }
 ```
 
 - `isWiFiConnected()` は関数（`network.cpp`。`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
+- 天気は `loop()` の先頭で呼ぶ `weatherLoop()`（`weather.cpp`）が取得して保持し、`getWeather()` で `WeatherData` を受け取ります。描画関数は通信をしません
 - 時刻同期の判定は `isTimeSynced()`（`time(nullptr) > 1704067200`、つまり 2024-01-01 以降なら同期済み）
 - `temp_history` / `humid_history` は `HISTORY_SIZE`（144、`display_screens.h` で定義）要素のリングバッファで、10分ごとに保存されます。表示側の添字計算も同じ `HISTORY_SIZE` を使うので、件数を変えるときは定義を1か所変えるだけで済みます
 

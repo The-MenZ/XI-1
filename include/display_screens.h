@@ -8,6 +8,7 @@
 #include "Custom_VEML7700.h"
 #include "Custom_MAX9814.h"
 #include "Custom_MICS5524.h"
+#include "weather.h"
 
 // ============================================================================
 // 画面表示関数群
@@ -59,5 +60,9 @@ void displayClimateModern(
 
 // 画面8: 設定ページ QRコード表示（中央に歯車。url が空なら未接続の表示）
 void displaySettingsQR(const String& url);
+
+// 画面9: Weather（天気。今の天気と、今日・明日の予報）
+// 地域が未設定、またはまだ取得できていなければその旨を出す
+void displayWeather(const WeatherData& weather, bool has_location, bool wifi_connected);
 
 #endif // DISPLAY_SCREENS_H
