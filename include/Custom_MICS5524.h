@@ -16,46 +16,55 @@ struct MICS5524Data {
     float rs_ro_ratio;       // Rs/Ro ratio (gas detection indicator)
     float ppm_equivalent;    // ppm equivalent (CO reference)
     bool heater_enabled;     // Heater status
+    bool calibrated;         // Ro calibrated (false while warming up)
 };
 
 class CustomMICS5524 {
 private:
   const int ADC_PIN;
   const int HEATER_PIN;       // EN ピン（ヒーター制御）
-  const float REF_VOLTAGE = 3.3;     // ESP32-C3の参照電圧
-  const int ADC_RESOLUTION = 4095;   // 12ビットADC
+  const float CIRCUIT_VOLTAGE = 3.3;     // 検出回路（センサー + ロード抵抗）の電源電圧
   const int SAMPLE_SIZE = 100;       // サンプル数
   const float LOAD_RESISTANCE = 10000.0; // ロード抵抗 (10kΩ)
-  
+
+  // ヒーターが温まって値が安定するまでの時間
+  const unsigned long WARMUP_MS = 3UL * 60 * 1000;  // 3分
+
   // キャリブレーション値 (新鮮な空気中での基準値)
   float Ro = 10000.0;  // 新鮮な空気中のセンサー抵抗 (Ω)
-  
-  // CO検出の標準曲線係数
-  const float CO_A = 8.3;      // log-log グラフの傾き
-  const float CO_B = -0.913;   // 傾斜
-  
+  bool calibrated = false;
+  unsigned long heater_on_time = 0;
+
+  // CO 換算の近似式（DFRobot_MICS ライブラリと同じ）
+  // ppm = (0.425 - Rs/Ro) / 0.000405 （Rs/Ro が下がるほど CO が多い、1〜1000ppm）
+  const float CO_RATIO_THRESHOLD = 0.425;
+  const float CO_RATIO_PER_PPM = 0.000405;
+
   // フィルタ用バッファ
   float voltage_history[5];
   int history_index = 0;
   bool history_filled = false;
-  
+
   // 中央値を計算
   float calculateMedian(float *arr, int size);
-  
+
 public:
   CustomMICS5524(int adc_pin, int heater_pin = -1);
-  
+
   void begin();
-  
+
   // ヒーターの有効/無効制御
   void enableHeater(bool enable);
-  
-  // キャリブレーション（新鮮な空気中で呼び出す）
+
+  // ヒーターがウォームアップ時間を過ぎたか
+  bool isWarmedUp() const;
+  bool isCalibrated() const { return calibrated; }
+
+  // キャリブレーション（ウォームアップ後、新鮮な空気中で呼び出す）
   void calibrate();
-  
+
   // センサー読み込み
   MICS5524Data read();
 };
 
 #endif
-

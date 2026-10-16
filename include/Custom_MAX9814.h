@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <cmath>
+#include "adc_util.h"
 
 // ============================================================================
 // MAX9814マイクセンサー用カスタムドライバ（修正版）
@@ -20,8 +21,6 @@ struct MAX9814Data {
 class CustomMAX9814 {
 private:
   const int ADC_PIN;
-  const float REF_VOLTAGE = 3.3;     // ESP32-C3の参照電圧
-  const int ADC_RESOLUTION = 4095;   // 12ビットADC
   const int SAMPLE_SIZE = 10000;     // サンプル数
   
   // ★巨大な adc_buffer は削除しました（メモリ節約）
@@ -77,8 +76,8 @@ public:
       if (val < min_val) min_val = val;
       if (val > max_val) max_val = val;
       
-      // 電圧に変換
-      float v = (float)val / ADC_RESOLUTION * REF_VOLTAGE;
+      // 電圧に変換（eFuse 校正値込み）
+      float v = adcRawToVolts(val);
       
       sum_voltage += v;
       sum_voltage_sq += (v * v);
@@ -109,7 +108,7 @@ public:
     // その他のデータを格納
     data.raw_value = (min_val + max_val) / 2;
     data.voltage = mean_voltage; // 平均電圧（DCバイアス）
-    data.peak_to_peak = ((float)(max_val - min_val) / ADC_RESOLUTION) * REF_VOLTAGE;
+    data.peak_to_peak = adcRawToVolts(max_val) - adcRawToVolts(min_val);
 
     // --- 3. dB SPL（Sound Pressure Level）変換 ---
     // MAX9814スペック

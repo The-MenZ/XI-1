@@ -1,4 +1,5 @@
 #include "Custom_MICS5524.h"
+#include "adc_util.h"
 
 float CustomMICS5524::calculateMedian(float *arr, int size) {
     float temp[5];
@@ -32,8 +33,13 @@ void CustomMICS5524::begin() {
         pinMode(HEATER_PIN, OUTPUT);
         enableHeater(true);
     }
+    heater_on_time = millis();
 
     Serial.println("✅ MICS5524 initialized successfully");
+}
+
+bool CustomMICS5524::isWarmedUp() const {
+    return millis() - heater_on_time >= WARMUP_MS;
 }
 
 void CustomMICS5524::enableHeater(bool enable) {
@@ -50,40 +56,46 @@ void CustomMICS5524::calibrate() {
     // Calibrate in fresh air
     // Calculate reference resistance by averaging samples
     float sum_resistance = 0.0f;
+    int valid_samples = 0;
     const int calib_samples = 50;
 
     for (int i = 0; i < calib_samples; i++) {
-        int raw = analogRead(ADC_PIN);
-        float v = (float)raw / ADC_RESOLUTION * REF_VOLTAGE;
+        float v = adcRawToVolts(analogRead(ADC_PIN));
 
-        // Rs = Rl * (Vref - Vout) / Vout
+        // Rs = Rl * (Vc - Vout) / Vout
         if (v > 0.01f) {  // Prevent division by zero
-            float rs = LOAD_RESISTANCE * (REF_VOLTAGE - v) / v;
+            float rs = LOAD_RESISTANCE * (CIRCUIT_VOLTAGE - v) / v;
             sum_resistance += rs;
+            valid_samples++;
         }
         delay(10);
     }
 
-    Ro = sum_resistance / calib_samples;
+    if (valid_samples == 0) {
+        Serial.println("⚠️  MICS5524 calibration failed (no valid samples)");
+        return;
+    }
+
+    Ro = sum_resistance / valid_samples;
+    calibrated = true;
     Serial.print("📊 MICS5524 calibrated: Ro=");
     Serial.print(Ro);
     Serial.println(" Ω");
 }
 
 MICS5524Data CustomMICS5524::read() {
-    MICS5524Data data = {0, 0.0f, 0.0f, 0.0f, 0.0f, false};
+    MICS5524Data data = {0, 0.0f, 0.0f, 0.0f, 0.0f, false, false};
 
     // Sampling
-    double sum_voltage = 0.0;
+    long sum_raw = 0;
     for (int i = 0; i < SAMPLE_SIZE; i++) {
-        int val = analogRead(ADC_PIN);
-        float v = (float)val / ADC_RESOLUTION * REF_VOLTAGE;
-        sum_voltage += v;
+        sum_raw += analogRead(ADC_PIN);
         delayMicroseconds(100);
     }
 
     // Average voltage
-    float mean_voltage = sum_voltage / SAMPLE_SIZE;
+    float mean_raw = (float)sum_raw / SAMPLE_SIZE;
+    float mean_voltage = adcRawToVolts(mean_raw);
 
     // Filtering with median
     voltage_history[history_index] = mean_voltage;
@@ -101,36 +113,28 @@ MICS5524Data CustomMICS5524::read() {
     }
 
     // Store data
-    data.raw_value = (int)(mean_voltage / REF_VOLTAGE * ADC_RESOLUTION);
+    data.raw_value = (int)(mean_raw + 0.5f);
     data.voltage = filtered_voltage;
 
     // Calculate sensor resistance
-    // Rs = Rl * (Vref - Vout) / Vout
+    // Rs = Rl * (Vc - Vout) / Vout
     if (filtered_voltage > 0.01f) {
-        data.resistance = LOAD_RESISTANCE * (REF_VOLTAGE - filtered_voltage) / filtered_voltage;
+        data.resistance = LOAD_RESISTANCE * (CIRCUIT_VOLTAGE - filtered_voltage) / filtered_voltage;
     } else {
         data.resistance = LOAD_RESISTANCE;
     }
 
-    // Rs/Ro ratio
-    if (Ro > 0) {
+    // Rs/Ro と ppm はウォームアップ後のキャリブレーションが済んでから
+    data.calibrated = calibrated;
+    if (calibrated && Ro > 0) {
         data.rs_ro_ratio = data.resistance / Ro;
-    } else {
-        data.rs_ro_ratio = 1.0f;
-    }
 
-    // PPM calculation (CO reference curve)
-    // log(ppm) = A * log(Rs/Ro) + B
-    if (data.rs_ro_ratio > 0.01f) {
-        float log_ratio = log10(data.rs_ro_ratio);
-        float log_ppm = CO_A * log_ratio + CO_B;
-        data.ppm_equivalent = pow(10, log_ppm);
-
-        // Limit unrealistic values
-        if (data.ppm_equivalent < 0) data.ppm_equivalent = 0;
-        if (data.ppm_equivalent > 10000) data.ppm_equivalent = 10000;
-    } else {
-        data.ppm_equivalent = 0;
+        // PPM calculation (CO reference)
+        // Rs/Ro が閾値より高い（きれいな空気）なら 0、下がるほど CO が多い
+        float ppm = (CO_RATIO_THRESHOLD - data.rs_ro_ratio) / CO_RATIO_PER_PPM;
+        if (ppm < 1.0f) ppm = 0.0f;
+        if (ppm > 1000.0f) ppm = 1000.0f;
+        data.ppm_equivalent = ppm;
     }
 
     // Heater status

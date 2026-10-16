@@ -11,13 +11,28 @@ bool CustomAHT21::begin() {
     return true;
 }
 
+// 飽和水蒸気圧 (hPa) - Magnus 式
+static float saturationVaporPressure(float temp_c) {
+    return 6.112f * expf(17.62f * temp_c / (243.12f + temp_c));
+}
+
 AHT21Data CustomAHT21::read() {
-    AHT21Data data = {0.0f, 0.0f};
+    AHT21Data data = {0.0f, 0.0f, 0.0f, 0.0f};
     sensors_event_t humidity, temp;
     aht.getEvent(&humidity, &temp);
 
-    data.temperature = temp.temperature;
-    data.humidity = humidity.relative_humidity;
+    data.raw_temperature = temp.temperature;
+    data.raw_humidity = humidity.relative_humidity;
+
+    // 温度はオフセット分を引く
+    data.temperature = data.raw_temperature - temperature_offset;
+
+    // 相対湿度はセンサー自身の温度に対する値なので、温まっていると低く出る。
+    // 空気中の水蒸気量は同じまま温度だけ下がったとして換算し直す
+    data.humidity = data.raw_humidity
+                  * saturationVaporPressure(data.raw_temperature)
+                  / saturationVaporPressure(data.temperature);
+    if (data.humidity > 100.0f) data.humidity = 100.0f;
 
     return data;
 }

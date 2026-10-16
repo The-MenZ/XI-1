@@ -67,8 +67,8 @@ void displayClimate(
     if (aht21_enabled) {
       display.setCursor(2, 56);
       display.print("Temp:  ");
-      // 🔧 e-paper表示用にオフセット補正を適用（-10°C）
-      display.print((int)(aht21_data.temperature - 10.0));
+      // 自己発熱補正済みの値（補正量は main.cpp の AHT21_TEMP_OFFSET）
+      display.print((int)aht21_data.temperature);
       display.println("C");
     } else if (bmp280_enabled) {
       display.setCursor(2, 56);
@@ -173,7 +173,11 @@ void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled) {
   display.setCursor(2, 24);
   display.println("Gas Sensor");
   
-  if (sensor_enabled) {
+  if (sensor_enabled && !mics5524_data.calibrated) {
+    // ヒーターのウォームアップ中（起動から3分間）
+    display.setCursor(2, 120);
+    display.println("Warming up");
+  } else if (sensor_enabled) {
     // Rs/Ro比率（シンプル表示）
     display.setCursor(2, 120);
     display.print("Rs/Ro: ");
@@ -241,21 +245,59 @@ void displayMonthDay(int month, int day) {
 // ============================================================================
 // 画面7: WiFi QRコード表示
 // ============================================================================
+
+// 誤り訂正レベル L・バイトモードで各バージョンに入る最大バイト数（v1〜v10）
+// ricmoo/QRCode は容量チェックをせず、溢れるとスタック上のバッファを壊すため、
+// ここで収まるバージョンを選んでから生成する
+static const uint16_t QR_BYTE_CAPACITY_L[] = {17, 32, 53, 78, 106, 134, 154, 192, 230, 271};
+static const uint8_t QR_MAX_VERSION = sizeof(QR_BYTE_CAPACITY_L) / sizeof(QR_BYTE_CAPACITY_L[0]);
+
+// WiFi QR の値に含まれる特殊文字（\ ; , : "）をバックスラッシュでエスケープ
+static String escapeWiFiQRField(const String& value) {
+  String escaped;
+  for (unsigned int i = 0; i < value.length(); i++) {
+    char c = value[i];
+    if (c == '\\' || c == ';' || c == ',' || c == ':' || c == '"') {
+      escaped += '\\';
+    }
+    escaped += c;
+  }
+  return escaped;
+}
+
 void displayWiFiQR(const String& ssid, const String& password) {
   // QRコード用の文字列生成（WiFi設定フォーマット）
   // フォーマット: WIFI:T:認証方式;S:SSID;P:パスワード;;
-  String wifi_string = "WIFI:T:WPA;S:" + ssid + ";P:" + password + ";;";
-  
-  // QRコード用のバッファ確保
-  // ricmoo/QRCode: バッファサイズ = version 1 で約150bytes必要
-  uint8_t qrcodedata[152];
+  String wifi_string = "WIFI:T:WPA;S:" + escapeWiFiQRField(ssid) +
+                       ";P:" + escapeWiFiQRField(password) + ";;";
+
+  // 文字列が収まる最小のバージョンを選ぶ（小さいほど1マスを大きく描ける）
+  uint8_t version = 0;
+  for (uint8_t v = 1; v <= QR_MAX_VERSION; v++) {
+    if (wifi_string.length() <= QR_BYTE_CAPACITY_L[v - 1]) {
+      version = v;
+      break;
+    }
+  }
+
+  if (version == 0) {
+    Serial.printf("DEBUG: QRCode data too long (%u bytes)\n", wifi_string.length());
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(20, 100);
+    display.print("QR: data too long");
+    return;
+  }
+
+  // QRコード用のバッファ確保（バージョンに応じたサイズ）
+  uint8_t qrcodedata[qrcode_getBufferSize(version)];
   struct QRCode qrcode;
-  
-  // QRコード生成（version 1で十分。21x21モジュール = 189x189ピクセル@module_size=9）
-  int err = qrcode_initText(&qrcode, qrcodedata, 1, ECC_LOW, wifi_string.c_str());
-  
-  Serial.printf("DEBUG: QRCode gen err=%d, size=%d\n", err, qrcode.size);
-  
+
+  int err = qrcode_initText(&qrcode, qrcodedata, version, ECC_LOW, wifi_string.c_str());
+
+  Serial.printf("DEBUG: QRCode gen err=%d, version=%d, size=%d, bytes=%u\n",
+                err, version, qrcode.size, wifi_string.length());
+
   if (err != 0) {
     // エラー時はエラーメッセージ表示
     display.setTextColor(GxEPD_BLACK);

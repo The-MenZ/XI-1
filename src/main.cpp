@@ -2,8 +2,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <GxEPD2_BW.h>
-#include <GxEPD2_3C.h>
-#include <GxEPD2_7C.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <time.h>
@@ -28,9 +26,6 @@
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeSerif9pt7b.h>
 
-
-#define LED_PIN 3
-
 // ============================================================================
 // WiFi + NTP 設定
 // ============================================================================
@@ -39,19 +34,19 @@
 #define NTP_SERVER1 "pool.ntp.org"
 #define NTP_SERVER2 "time.nist.gov"
 
-// NTP再同期設定（24時間ごと）
-#define NTP_RESYNC_INTERVAL (24 * 60 * 60 * 1000)  // 24時間（ミリ秒）
-static unsigned long last_ntp_sync_time = 0;       // 最後のNTP同期時刻
+// これより前の時刻は未同期とみなす（2024-01-01 00:00:00 UTC）
+#define TIME_SYNCED_THRESHOLD 1704067200
 
-// WiFi接続状態
-bool isWiFiConnected = false;
+// WiFi は切断されても自動で再接続し、NTP も ESP-IDF が定期的に（3時間ごと）
+// 再同期するので、接続状態や同期状態は都度問い合わせる
 
 // ============================================================================
 // 関数プロトタイプ宣言
 // ============================================================================
 void setupWiFi();
 void setupNTP();
-void checkAndResyncNTP();
+bool isWiFiConnected();
+bool isTimeSynced();
 String getCurrentDateTime();
 
 // ============================================================================
@@ -79,6 +74,10 @@ String getCurrentDateTime();
 // アナログ入力ピン (MICS5524ガスセンサー用)
 #define MICS5524_PIN   3   // GPIO3  (ADC1_CH3 - MICS5524ガスセンサー出力)
 #define MICS5524_HEATER_PIN  10   // GPIO10 (ヒーター制御 EN ピン)
+
+// AHT21 の自己発熱補正（ガスセンサーのヒーター等で室温より約10°C高く出るため）
+// 温度からこの値を引き、湿度も同じ温度差で換算し直す
+#define AHT21_TEMP_OFFSET  10.0f
 
 // ============================================================================
 // e-paper初期化: WeAct 1.54" 200x200 SSD1681
@@ -150,8 +149,6 @@ void setup() {
   Serial.println("  ESP32-C3 Super Mini (K2) + WeAct 1.54\" e-paper 起動");
   Serial.println("=================================================================\n");
   
-  pinMode(LED_PIN, OUTPUT);
-  
   // I2C バス初期化（GPIO8=SDA, GPIO9=SCL）
   Serial.print("📡 I2Cバスを初期化中...");
   Wire.begin(I2C_SDA, I2C_SCL, 100000);
@@ -170,6 +167,7 @@ void setup() {
   // AHT21初期化
   Serial.print("🌡️  AHT21を初期化中...");
   aht21.begin();
+  aht21.setTemperatureOffset(AHT21_TEMP_OFFSET);
   // AHT21の有効性を確認（簡易版：存在すればOK）
   Wire.beginTransmission(0x38);
   if (Wire.endTransmission() == 0) {
@@ -217,9 +215,8 @@ void setup() {
   // MICS5524初期化
   Serial.print("💨 MICS5524ガスセンサーを初期化中...");
   mics5524.begin();
-  // キャリブレーション実行（新鮮な空気中で）
-  mics5524.calibrate();
-  Serial.println("✅ 成功");
+  // キャリブレーションはヒーターが温まってから loop() で実行する
+  Serial.println("✅ 成功（ウォームアップ3分後にキャリブレーション）");
   sensor_mics5524_enabled = true;
   
   // SPI初期化
@@ -291,7 +288,6 @@ void setup() {
   Serial.println();
   
   // e-paper 初期表示 - テストコード（シンプル）
-  digitalWrite(LED_PIN, HIGH);
   delay(500);
   
   Serial.println("\n📺 e-paper に背景色を表示中...");
@@ -322,9 +318,7 @@ void setup() {
   
   Serial.println("   ✅ テキスト表示完了");
   delay(2000);
-  
-  digitalWrite(LED_PIN, LOW);
-  
+
   // ===================================================================
   // WiFi + NTP 初期化
   // ===================================================================
@@ -339,20 +333,20 @@ void setup() {
   Serial.println("=================================================================");
   
   Serial.println("\n📡 WiFi接続状態:");
-  if (isWiFiConnected) {
+  if (isWiFiConnected()) {
     Serial.printf("   ✅ SSID: %s\n", WiFi.SSID().c_str());
     Serial.printf("   ✅ IP: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("   ✅ RSSI: %d dBm\n", WiFi.RSSI());
   } else {
-    Serial.println("   ⚠️  WiFi未接続");
+    Serial.println("   ⚠️  WiFi未接続（バックグラウンドで再接続を継続）");
   }
-  
+
   Serial.println("\n🕐 NTP時刻同期状態:");
-  if (last_ntp_sync_time > 0) {
-    Serial.printf("   ✅ 同期済み (%lu ms前)\n", millis() - last_ntp_sync_time);
+  if (isTimeSynced()) {
+    Serial.println("   ✅ 同期済み");
     Serial.printf("   ✅ 現在時刻: %s JST\n", getCurrentDateTime().c_str());
   } else {
-    Serial.println("   ⚠️  未同期");
+    Serial.println("   ⚠️  未同期（WiFi接続後に自動で同期）");
   }
   
   Serial.println("\n📊 センサー初期化状態:");
@@ -380,10 +374,7 @@ void loop() {
   unsigned long current_time = millis();
   
   const unsigned long FULL_REFRESH_INTERVAL = 10 * 60 * 1000;  // 10分
-  
-  // 24時間ごとのNTP再同期チェック
-  checkAndResyncNTP();
-  
+
   // 10秒ごとにセンサー値取得 & 画面更新
   if (current_time - last_update >= 10000 || first_display) {
     last_update = current_time;
@@ -406,6 +397,10 @@ void loop() {
       max9814_data = max9814.read();
     }
     if (sensor_mics5524_enabled) {
+      // ヒーターが温まったら一度だけ新鮮な空気の基準値（Ro）を取る
+      if (!mics5524.isCalibrated() && mics5524.isWarmedUp()) {
+        mics5524.calibrate();
+      }
       mics5524_data = mics5524.read();
     }
     
@@ -442,11 +437,15 @@ void loop() {
       if (sensor_aht21_enabled) {
         Serial.print("  🌡️  温度(AHT21): ");
         Serial.print(aht21_data.temperature, 2);
-        Serial.println(" °C");
-        
+        Serial.print(" °C (生値 ");
+        Serial.print(aht21_data.raw_temperature, 2);
+        Serial.println(" °C)");
+
         Serial.print("  💧 湿度(AHT21): ");
         Serial.print(aht21_data.humidity, 2);
-        Serial.println(" %");
+        Serial.print(" % (生値 ");
+        Serial.print(aht21_data.raw_humidity, 2);
+        Serial.println(" %)");
       } else {
         Serial.println("  🌡️  AHT21: スキップ（未接続）");
       }
@@ -523,12 +522,16 @@ void loop() {
         Serial.print(mics5524_data.resistance, 0);
         Serial.println(" Ω");
         
-        Serial.print("  💨 Rs/Ro比: ");
-        Serial.println(mics5524_data.rs_ro_ratio, 3);
-        
-        Serial.print("  💨 ppm換算(CO基準): ");
-        Serial.print(mics5524_data.ppm_equivalent, 1);
-        Serial.println(" ppm");
+        if (mics5524_data.calibrated) {
+          Serial.print("  💨 Rs/Ro比: ");
+          Serial.println(mics5524_data.rs_ro_ratio, 3);
+
+          Serial.print("  💨 ppm換算(CO基準): ");
+          Serial.print(mics5524_data.ppm_equivalent, 1);
+          Serial.println(" ppm");
+        } else {
+          Serial.println("  💨 Rs/Ro比・ppm: ウォームアップ中");
+        }
         
         Serial.print("  💨 ヒーター: ");
         Serial.println(mics5524_data.heater_enabled ? "ON" : "OFF");
@@ -538,12 +541,10 @@ void loop() {
     }
     
     // e-paper 表示更新
-    digitalWrite(LED_PIN, HIGH);
-    
     // ===================================================================
     // 重要: 初回はフルリフレッシュ、その後は部分リフレッシュ
     // 10分ごとにゴースト軽減のためフルリフレッシュ
-    // （フルリフレッシュは77秒かかるため毎回は不可）
+    // （フルリフレッシュは約1.5秒かかり画面が白黒に点滅するため毎回は行わない）
     // ===================================================================
     if (first_display) {
       display.setFullWindow();
@@ -588,7 +589,7 @@ void loop() {
           displayGasSensor(mics5524_data, sensor_mics5524_enabled);
           break;
         case 4:
-          displayDateTime(isWiFiConnected, getCurrentDateTime());
+          displayDateTime(isWiFiConnected(), getCurrentDateTime());
           break;
         case 5: {
           // 月日表示画面
@@ -619,8 +620,6 @@ void loop() {
     
     // 部分リフレッシュでも完了を待機
     delay(100);
-    
-    digitalWrite(LED_PIN, LOW);
   }
   
   // CPUの過負荷を防ぐため、短い遅延を入れる
@@ -657,65 +656,48 @@ void setupWiFi() {
     int8_t tx_power;
     esp_wifi_get_max_tx_power(&tx_power);
     Serial.printf("📡 TX Power Setting: %d (≈ %.1f dBm)\n", tx_power, tx_power / 4.0);
-    
-    isWiFiConnected = true;
   } else {
-    Serial.println("\n✗ WiFi接続失敗");
-    isWiFiConnected = false;
+    // 自動再接続が有効なので、ルーターが復帰すれば後から繋がる
+    Serial.println("\n✗ WiFi接続失敗（バックグラウンドで再接続を継続）");
   }
 }
 
 void setupNTP() {
-  if (!isWiFiConnected) {
-    Serial.println("⚠ WiFiが接続されていないため、NTP同期をスキップします");
+  Serial.println("\n=== NTP時刻同期開始 ===");
+
+  // タイムゾーン設定（JST: UTC+9）
+  // WiFi未接続でも設定しておけば、接続された時点で自動的に同期される
+  configTzTime("JST-9", NTP_SERVER1, NTP_SERVER2);
+
+  if (!isWiFiConnected()) {
+    Serial.println("⚠ WiFi未接続のため、接続後にバックグラウンドで同期します");
     return;
   }
-  
-  Serial.println("\n=== NTP時刻同期開始 ===");
-  
-  // タイムゾーン設定（JST: UTC+9）
-  configTzTime("JST-9", NTP_SERVER1, NTP_SERVER2);
-  
+
   // NTP同期待機（最大15秒）
   Serial.print("NTP同期中");
   int attempts = 0;
-  time_t now = time(nullptr);
-  while (now < 24 * 3600 && attempts < 30) {
+  while (!isTimeSynced() && attempts < 30) {
     delay(500);
     Serial.print(".");
-    now = time(nullptr);
     attempts++;
   }
-  
+
   Serial.println();
-  if (now > 24 * 3600) {
+  if (isTimeSynced()) {
     Serial.println("✓ NTP同期成功");
-    struct tm timeinfo;
-    localtime_r(&now, &timeinfo);
-    Serial.printf("現在時刻: %04d-%02d-%02d %02d:%02d:%02d JST\n",
-      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    
-    // 最後のNTP同期時刻を記録
-    last_ntp_sync_time = millis();
+    Serial.printf("現在時刻: %s JST\n", getCurrentDateTime().c_str());
   } else {
-    Serial.println("✗ NTP同期失敗");
+    Serial.println("✗ NTP同期失敗（バックグラウンドで同期を継続）");
   }
 }
 
-// 24時間ごとのNTP再同期チェック関数
-void checkAndResyncNTP() {
-  if (!isWiFiConnected) {
-    return;  // WiFiが接続されていなければスキップ
-  }
-  
-  unsigned long current_time = millis();
-  
-  // 24時間以上経過したかチェック
-  if (current_time - last_ntp_sync_time >= NTP_RESYNC_INTERVAL) {
-    Serial.println("\n⏰ 24時間経過。NTP再同期を実行します...");
-    setupNTP();
-  }
+bool isWiFiConnected() {
+  return WiFi.status() == WL_CONNECTED;
+}
+
+bool isTimeSynced() {
+  return time(nullptr) > TIME_SYNCED_THRESHOLD;
 }
 
 String getCurrentDateTime() {
@@ -728,19 +710,17 @@ String getCurrentDateTime() {
   return String(buffer);
 }
 
+// ENS160 の AQI-UBA は 1〜5（1=Excellent 〜 5=Unhealthy）。0 は未測定
 void printAQIStatus(uint8_t aqi) {
   switch (aqi) {
-    case 0:
+    case 1:
       Serial.print("優秀");
       break;
-    case 1:
+    case 2:
       Serial.print("良好");
       break;
-    case 2:
-      Serial.print("中程度");
-      break;
     case 3:
-      Serial.print("良くない");
+      Serial.print("中程度");
       break;
     case 4:
       Serial.print("悪い");
@@ -755,18 +735,16 @@ void printAQIStatus(uint8_t aqi) {
 
 String getAQIStatusEnglish(uint8_t aqi) {
   switch (aqi) {
-    case 0:
-      return "Very Good";    // Very Good
     case 1:
-      return "Good";      // Good
+      return "Excellent";
     case 2:
-      return "Moderate";  // Moderate
+      return "Good";
     case 3:
-      return "Poor";      // Poor
+      return "Moderate";
     case 4:
-      return "Bad";       // Bad
+      return "Poor";
     case 5:
-      return "Very Bad";     // Very Bad
+      return "Unhealthy";
     default:
       return "unknown";
   }
