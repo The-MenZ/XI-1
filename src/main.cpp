@@ -226,7 +226,6 @@ float pressureTrend3h(float pressure) {
 
 // 関数プロトタイプ宣言
 void printAQIStatus(uint8_t aqi);
-String getAQIStatusEnglish(uint8_t aqi);
 
 void setup() {
   Serial.begin(115200);
@@ -613,6 +612,10 @@ void loop() {
         Serial.print(" (");
         printAQIStatus(ens160_data.aqi);
         Serial.println(")");
+        if (ens160_data.validity != ENS160_VALIDITY_NORMAL) {
+          Serial.printf("  ⏳ ENS160 準備中（有効フラグ %u、進み具合 %d%%）\n",
+                        ens160_data.validity, (int)(ens160_data.warmup_progress * 100));
+        }
       } else {
         Serial.println("  📊 ENS160: スキップ（未接続）");
       }
@@ -910,22 +913,5 @@ void printAQIStatus(uint8_t aqi) {
       break;
     default:
       Serial.print("不明");
-  }
-}
-
-String getAQIStatusEnglish(uint8_t aqi) {
-  switch (aqi) {
-    case 1:
-      return "Excellent";
-    case 2:
-      return "Good";
-    case 3:
-      return "Moderate";
-    case 4:
-      return "Poor";
-    case 5:
-      return "Unhealthy";
-    default:
-      return "unknown";
   }
 }
