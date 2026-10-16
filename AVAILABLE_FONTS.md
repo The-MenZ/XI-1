@@ -17,7 +17,6 @@
 | `FreeSans12pt7b` | Adafruit GFX | Date & Time のタイトル、Settings QR・Weather の未接続／未取得時の表示 |
 | `FreeSans18pt7b` | Adafruit GFX | Date & Time の日時 |
 | `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示、Weather の未取得時の表示、Pressure の等圧線の気圧 |
-| `FreeMonoBold24pt7b` | Adafruit GFX | Pressure の H / L（`setTextSize(2)` で 2 倍表示） |
 | `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度、Weather の今の気温（大きな数字） |
 | `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度、Pressure の気圧と3時間の変化 |
 | `u8g2_font_helvB12_tf` | U8g2 | Weather の天気の名前・°C・日付・最高/最低気温 |

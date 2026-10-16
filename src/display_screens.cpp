@@ -4,7 +4,6 @@
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeMonoBold24pt7b.h>
 #include <qrcode.h>
 #include <U8g2_for_Adafruit_GFX.h>
 
@@ -1041,10 +1040,20 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
 #define ISOBAR_MAX 12            // 描く線の上限（間隔 約5px。1013 から 48hPa 離れた台風並み）
 #define ISOBAR_SEGMENTS 90       // 1周を何本の線分で描くか
 #define ISOBAR_PHASE_STEP 0.7f   // 線ごとに揺らし方をずらす量（同じ形が重ならないように）
-#define ISOBAR_LABEL_INNER_T -0.5f  // 一番内側の線の気圧を書く角度（rad、右上）
+#define ISOBAR_LABEL_INNER_T -0.4f  // 一番内側の線の気圧を書く角度（rad、右上。H の影に触れない位置）
 #define ISOBAR_LABEL_OUTER_T 2.24f  // 一番外側の線の気圧を書く角度（rad、左下の角の方向）
 #define TREND_STEADY 1.0f        // 3時間の変化がこれ未満なら横ばい（→）
 #define TREND_RAPID 3.0f         // これ以上なら急な変化（▲▲ / ▼▼）
+
+// H / L のブロック体（フォントを使わず長方形で描く。白抜きの太字に黒い縁と、右下に黒い影）
+#define MARK_X 76         // 字の左上（縁と影を除く）
+#define MARK_Y 40
+#define MARK_W 46         // H の幅
+#define MARK_L_W 40       // L の横棒の長さ
+#define MARK_H 52         // 字の高さ
+#define MARK_STROKE 14    // 線の太さ
+#define MARK_OUTLINE 3    // 黒い縁の太さ
+#define MARK_SHADOW 6     // 影を右下へずらす量
 
 // 等圧線の半径。角度 t によって少し揺らし、手描きの天気図のような形にする
 static float isobarRadius(float base_r, float t, float phase) {
@@ -1134,6 +1143,28 @@ static void drawTrendBadge(float trend) {
   u8g2Fonts.print(value);
 }
 
+// H / L を形づくる長方形を、(dx, dy) ずらし、上下左右に grow ずつ太らせて塗る
+static void fillMarkRects(bool high, int16_t dx, int16_t dy, int16_t grow, uint16_t color) {
+  int16_t x = MARK_X + dx - grow;
+  int16_t y = MARK_Y + dy - grow;
+  int16_t stroke = MARK_STROKE + 2 * grow;
+  int16_t height = MARK_H + 2 * grow;
+  display.fillRect(x, y, stroke, height, color);  // 左の縦棒
+  if (high) {
+    display.fillRect(x + MARK_W - MARK_STROKE, y, stroke, height, color);                  // 右の縦棒
+    display.fillRect(x, y + (MARK_H - MARK_STROKE) / 2, MARK_W + 2 * grow, stroke, color);  // 横棒
+  } else {
+    display.fillRect(x, y + MARK_H - MARK_STROKE, MARK_L_W + 2 * grow, stroke, color);  // 下の横棒
+  }
+}
+
+// 影 → 黒い縁 → 中の白、の順に重ねて、影つきの白抜き文字にする
+static void drawPressureMark(bool high) {
+  fillMarkRects(high, MARK_SHADOW, MARK_SHADOW, MARK_OUTLINE, GxEPD_BLACK);
+  fillMarkRects(high, 0, 0, MARK_OUTLINE, GxEPD_BLACK);
+  fillMarkRects(high, 0, 0, 0, GxEPD_WHITE);
+}
+
 void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float trend_3h) {
   if (!bmp280_enabled) {
     display.setCursor(2, 56);
@@ -1183,17 +1214,7 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
                     ISOBAR_LABEL_OUTER_T, first + last * step);
   }
 
-  // H / L（FreeMonoBold24pt7b を2倍にして使う）
-  const char* mark = high ? "H" : "L";
-  display.setFont(&FreeMonoBold24pt7b);
-  display.setTextSize(2);
-  int16_t bx, by;
-  uint16_t bw, bh;
-  display.getTextBounds(mark, 0, 0, &bx, &by, &bw, &bh);
-  display.setCursor(ISOBAR_CENTER_X - bw / 2 - bx, 104);
-  display.print(mark);
-  display.setTextSize(1);
-  display.setFont();
+  drawPressureMark(high);
 
   // 今の海面気圧
   beginU8g2Fonts();
