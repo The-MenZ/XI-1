@@ -176,6 +176,8 @@ u8g2Fonts.print("%");
 | `u8g2_font_helvB12_tf` | Helvetica Bold 12（`_tf`） | 天気画面の文字（`°` を含む） |
 | `u8g2_font_helvR08_tf` | Helvetica Regular 8（`_tf`） | グラフのラベル、天気画面の小さい文字 |
 
+- **`setFont()` はフォントが変わるたびに `setFontMode(0)`（背景を塗る）に戻します。** 背景を塗らない画面では、`display_screens.cpp` の `setU8g2FontTransparent()` でフォントを変えます（`setFont()` の後に `setFontMode(1)` を呼ぶ）。`setFontMode(1)` を `setFont()` より前に呼ぶと効かず、背景の色を決めていなければ初期値の 0 で塗られます。e-Paper では 0 が黒なので、文字の枠が黒い四角になります（Sound 画面の「dB」が黒い四角2つになっていた。Weather と Pressure も同じ書き方だった）
+- 同じ名前のフォントは U8g2 ライブラリ（`olikraus/U8g2`）にもあり、実際にリンクされるのは U8g2 側のデータです（`firmware.map` で確認）。どちらのデータでも表示は同じです
 - `print()` は UTF-8 を解釈するので、`_tf` フォントなら `°` なども表示できます
 - 日本語フォント（`u8g2_font_b16_t_japanese3` など）もあります。表示テストは `src/u8g2_gfx_font_test.cpp`（`pio run -e esp32-c3-super-mini-k2-u8g2gfx -t upload`）
 - フォント一覧: [U8g2 Font List](https://github.com/olikraus/u8g2/wiki/fntlistall)、方式の比較は [FONT_SYSTEM_ALTERNATIVES.md](./FONT_SYSTEM_ALTERNATIVES.md)

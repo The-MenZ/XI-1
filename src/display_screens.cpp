@@ -1021,6 +1021,15 @@ static void beginU8g2Fonts() {
   }
 }
 
+// u8g2 のフォントを変えて、文字の背景を塗らない設定にする
+// U8g2_for_Adafruit_GFX の setFont() は、フォントが変わるたびに「背景を塗る」（setFontMode(0)）に戻してしまう。
+// 背景の色を決めていないと初期値の 0 で塗られ、e-Paper では 0 が黒なので、文字の枠が黒い四角になる
+// （Sound 画面の「dB」が黒い四角2つになっていた）。なので setFontMode(1) は setFont() の後に呼ぶ
+static void setU8g2FontTransparent(const uint8_t* font) {
+  u8g2Fonts.setFont(font);
+  u8g2Fonts.setFontMode(1);
+}
+
 // ============================================================================
 // 画面7: Climate Modern (温度/湿度モダンデザイン)
 // ============================================================================
@@ -1460,7 +1469,6 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
   }
 
   beginU8g2Fonts();
-  u8g2Fonts.setFontMode(1);  // 文字の背景は塗らない
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
   u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
 
@@ -1468,7 +1476,7 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
   // 1行目: 天気の名前（左）と取得した時刻（右）
   const char* label;
   WeatherKind kind = weatherKind(weather.code, &label);
-  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  setU8g2FontTransparent(u8g2_font_helvB12_tf);
   u8g2Fonts.setCursor(4, 15);
   u8g2Fonts.print(label);
 
@@ -1477,7 +1485,7 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
     localtime_r(&weather.fetched_at, &t);
     char updated[16];
     strftime(updated, sizeof(updated), "Updated %H:%M", &t);
-    u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+    setU8g2FontTransparent(u8g2_font_helvR08_tf);
     u8g2Fonts.setCursor(196 - u8g2Fonts.getUTF8Width(updated), 13);
     u8g2Fonts.print(updated);
   }
@@ -1487,14 +1495,14 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
   // 気温（整数）と °C を右の列の中央に
   char text[20];
   snprintf(text, sizeof(text), "%ld", lroundf(weather.temp));
-  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);
+  setU8g2FontTransparent(u8g2_font_logisoso42_tn);
   int16_t temp_w = u8g2Fonts.getUTF8Width(text);
-  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  setU8g2FontTransparent(u8g2_font_helvB12_tf);
   int16_t x = 144 - (temp_w + 2 + u8g2Fonts.getUTF8Width("°C")) / 2;
-  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);
+  setU8g2FontTransparent(u8g2_font_logisoso42_tn);
   u8g2Fonts.setCursor(x, 84);
   u8g2Fonts.print(text);
-  u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+  setU8g2FontTransparent(u8g2_font_helvB12_tf);
   u8g2Fonts.setCursor(x + temp_w + 2, 56);
   u8g2Fonts.print("°C");
 
@@ -1512,7 +1520,7 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
     int mday = atoi(day.date + 8);
     if (month >= 1 && month <= 12) {
       snprintf(text, sizeof(text), "%d/%d %s", month, mday, WEEKDAYS[dayOfWeek(atoi(day.date), month, mday)]);
-      u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+      setU8g2FontTransparent(u8g2_font_helvB12_tf);
       printCentered(text, cx, 121);
     }
 
@@ -1521,12 +1529,12 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
 
     // 最高 / 最低気温
     snprintf(text, sizeof(text), "%ld° / %ld°", lroundf(day.temp_max), lroundf(day.temp_min));
-    u8g2Fonts.setFont(u8g2_font_helvB12_tf);
+    setU8g2FontTransparent(u8g2_font_helvB12_tf);
     printCentered(text, cx, 184);
 
     if (day.precip_prob >= 0) {
       snprintf(text, sizeof(text), "Rain %d%%", day.precip_prob);
-      u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+      setU8g2FontTransparent(u8g2_font_helvR08_tf);
       printCentered(text, cx, 197);
     }
   }
@@ -1638,15 +1646,14 @@ static void drawTrendBadge(float trend) {
   }
 
   // 変化の大きさ（符号は三角の向きで表す）と、その上に「3h」
-  u8g2Fonts.setFontMode(1);  // 背景を塗らない
   u8g2Fonts.setForegroundColor(GxEPD_WHITE);
-  u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+  setU8g2FontTransparent(u8g2_font_helvR08_tf);
   u8g2Fonts.setCursor(190 - u8g2Fonts.getUTF8Width("3h"), 168);
   u8g2Fonts.print("3h");
 
   char value[8];
   snprintf(value, sizeof(value), "%.1f", change);
-  u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+  setU8g2FontTransparent(u8g2_font_helvB18_tf);
   u8g2Fonts.setCursor(190 - u8g2Fonts.getUTF8Width(value), 190);
   u8g2Fonts.print(value);
 }
@@ -1726,9 +1733,8 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
 
   // 今の海面気圧
   beginU8g2Fonts();
-  u8g2Fonts.setFontMode(1);  // 背景を塗らない
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
-  u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+  setU8g2FontTransparent(u8g2_font_helvB18_tf);
   char value[8];
   snprintf(value, sizeof(value), "%d", pressure);
   u8g2Fonts.setCursor(ISOBAR_CENTER_X - u8g2Fonts.getUTF8Width(value) / 2, 138);
@@ -1799,9 +1805,8 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
 
   // 目盛りの線（5dB ごと。10dB ごとは長くして +dB の数字を添える）
   beginU8g2Fonts();
-  u8g2Fonts.setFontMode(1);  // 背景を塗らない
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
-  u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+  setU8g2FontTransparent(u8g2_font_helvR08_tf);
   for (int db = 0; db <= VU_DB_MAX; db += 5) {
     bool major = db % 10 == 0;
     float x0, y0, x1, y1;
@@ -1818,7 +1823,7 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
   }
 
   // 文字盤の単位（本物の VU メーターの「VU」の位置）。針はこの上を通る
-  u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+  setU8g2FontTransparent(u8g2_font_helvB18_tf);
   printCentered("dB", VU_CX, 110);
 
   // 針と軸
