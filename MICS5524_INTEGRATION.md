@@ -144,7 +144,7 @@ mics5524.calibrate();
 
 ## 画面表示
 
-`main.cpp` には8つの表示画面があり、10秒ごとに切り替わります（`SCREEN_ENABLED` で有効/無効を設定）：
+`main.cpp` には9つの表示画面があり、10秒ごと（設定ページで変更可）に切り替わります（有効/無効も設定ページで設定）：
 
 0. **Air Quality** - ENS160（eCO2/TVOC/AQI）
 1. **Climate** - AHT21/BMP280（温度/湿度/気圧/高度）
@@ -154,6 +154,7 @@ mics5524.calibrate();
 5. **Month Day** - 月日
 6. **WiFi QR** - WiFi 接続用 QR コード
 7. **Climate Modern** - 温湿度の円形ゲージ＋過去24時間グラフ
+8. **Settings QR** - 設定ページの QR コード
 
 Gas Sensor 画面に出すのはタイトルと Rs/Ro（またはウォームアップ表示）だけです。電圧・抵抗・ppm・ヒーター状態はシリアルモニターにのみ出力します。
 

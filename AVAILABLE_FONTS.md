@@ -22,7 +22,7 @@
 | `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度 |
 | `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY） |
 
-※ Date & Time 画面は既定で無効（`SCREEN_ENABLED[4] = false`）です。
+※ Date & Time 画面は既定で無効（`SCREEN_DEFAULT_ENABLED[4] = false`。設定ページで ON にできる）です。
 ※ `FreeSans24pt7b`・`FreeMono12pt7b`・`FreeSerif9pt7b` はインクルードされていますが、現在は使われていません。
 
 ---

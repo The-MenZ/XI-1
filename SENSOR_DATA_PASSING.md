@@ -206,9 +206,13 @@ switch(display_mode) {
     break;
   }
 
-  case 6:
-    // WiFi QR 画面 - wifi_config.h の SSID / パスワードを渡す
-    displayWiFiQR(WIFI_SSID, WIFI_PASSWORD);
+  case SCREEN_WIFI_QR:
+    // WiFi QR 画面 - 保存済みの SSID / パスワード（AP モード中は本体の AP）を渡す
+    if (isAPMode()) {
+      displayWiFiQR(getAPSSID(), "");
+    } else {
+      displayWiFiQR(settings.wifi_ssid, settings.wifi_password);
+    }
     break;
 
   case 7:
@@ -216,10 +220,15 @@ switch(display_mode) {
     displayClimateModern(aht21_data, sensor_aht21_enabled, bmp280_data, sensor_bmp280_enabled,
                          temp_history, humid_history, history_count, history_index);
     break;
+
+  case SCREEN_SETTINGS_QR:
+    // 設定ページ QR 画面 - 設定ページの URL を渡す
+    displaySettingsQR(getSettingsURL());
+    break;
 }
 ```
 
-- `isWiFiConnected()` は関数（`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
+- `isWiFiConnected()` は関数（`network.cpp`。`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
 - 時刻同期の判定は `isTimeSynced()`（`time(nullptr) > 1704067200`、つまり 2024-01-01 以降なら同期済み）
 - `temp_history` / `humid_history` は `HISTORY_SIZE`（144、`display_screens.h` で定義）要素のリングバッファで、10分ごとに保存されます。表示側の添字計算も同じ `HISTORY_SIZE` を使うので、件数を変えるときは定義を1か所変えるだけで済みます
 

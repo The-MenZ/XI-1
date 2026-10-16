@@ -46,7 +46,7 @@ void displayDateTime(bool isWiFiConnected, const String& dateTimeStr);
 // 画面5: 月日表示（シンプル & 洒落たデザイン）
 void displayMonthDay(int month, int day);
 
-// 画面6: WiFi QRコード表示
+// 画面6: WiFi QRコード表示（中央に WiFi マーク。パスワードが空なら暗号化なしの WiFi として出す）
 void displayWiFiQR(const String& ssid, const String& password);
 
 // 画面7: Climate Modern (温度/湿度モダンデザイン)
@@ -56,5 +56,8 @@ void displayClimateModern(
   const float* temp_history, const float* humid_history,
   int history_count, int history_index
 );
+
+// 画面8: 設定ページ QRコード表示（中央に歯車。url が空なら未接続の表示）
+void displaySettingsQR(const String& url);
 
 #endif // DISPLAY_SCREENS_H
