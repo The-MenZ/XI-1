@@ -157,8 +157,8 @@ I2C スキャンはアドレス順に出力されます（0x10 VEML7700 / 0x38 A
 Ambience
 Lux:   19lx        # 照度（四捨五入、18.97 lux の例）
 White: 49          # ホワイトチャネルの生カウント
-Sound: 45dB        # MAX9814（値は例）
-RMS:   0.012V      # MAX9814（値は例）
+Sound: +12dB       # MAX9814（補正後。値は例）
+Raw:   67dB        # MAX9814（引く前の騒音レベル。値は例）
 ```
 VEML7700 が無効の場合は Lux / White の代わりに `No Light` と表示されます。
 

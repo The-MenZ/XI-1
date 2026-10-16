@@ -8,6 +8,7 @@
 extern void applyTimeSettings();
 
 bool mics5524_calibration_requested = false;
+float current_sound_db = NAN;
 
 static WebServer server(80);
 static const char* const* screen_names = nullptr;
@@ -115,6 +116,18 @@ static void redirectToRoot(const char* message) {
   server.send(303);
 }
 
+// 今の騒音レベルを「54.6 dB」のように小数1桁で返す
+// （String(float) や printf の小数を使うと Flash が数 KB 増えるので、0.1dB 単位の整数で組み立てる）
+static String soundLevelText() {
+  if (isnan(current_sound_db)) {
+    return "まだ測っていません";
+  }
+  long tenths = lroundf(current_sound_db * 10);
+  String text = tenths < 0 ? "-" : "";
+  tenths = labs(tenths);
+  return text + String(tenths / 10) + "." + String(tenths % 10) + " dB";
+}
+
 static void handleRoot() {
   // WiFi 接続中に初めて開いたときは一覧が空なのでスキャンする
   // （AP 中は AP を立てる前にスキャン済み）
@@ -123,7 +136,7 @@ static void handleRoot() {
   }
 
   String html;
-  html.reserve(4500);
+  html.reserve(5000);
 
   String message = server.arg("m");
   if (message == "saved") {
@@ -217,6 +230,15 @@ static void handleRoot() {
           String(ALTITUDE_M_MIN) + " max=" + String(ALTITUDE_M_MAX) + " value=" + String(settings.altitude_m) + ">"
           "</fieldset>";
 
+  // 騒音（Sound 画面の針は、騒音レベルからこの値を引いた dB。静かなときが +0dB になる）
+  html += "<fieldset><legend>騒音（MAX9814）</legend>"
+          "騒音レベルから引く値（dB。静かにしたときの「引く前の騒音レベル」を入れる）"
+          "<input type=number name=mf min=" + String(MIC_FLOOR_DB_MIN) + " max=" + String(MIC_FLOOR_DB_MAX) +
+          " value=" + String(settings.mic_floor_db) + ">"
+          "<small>今の騒音レベル（引く前）: " + soundLevelText() +
+          "。ページを開き直すと新しい値になります</small>"
+          "</fieldset>";
+
   html += "<button>保存</button></form>";
   html += WEATHER_SCRIPT;
 
@@ -260,6 +282,13 @@ static void handleSave() {
   }
   settings.interval_sec = constrain(server.arg("iv").toInt(), INTERVAL_SEC_MIN, INTERVAL_SEC_MAX);
   settings.altitude_m = constrain(server.arg("alt").toInt(), ALTITUDE_M_MIN, ALTITUDE_M_MAX);
+
+  // 騒音レベルから引く値（空欄なら変更しない）
+  String floor_db = server.arg("mf");
+  floor_db.trim();
+  if (floor_db.length() > 0) {
+    settings.mic_floor_db = constrain(floor_db.toInt(), MIC_FLOOR_DB_MIN, MIC_FLOOR_DB_MAX);
+  }
 
   // 時刻（空欄なら変更しない）
   String ntp = server.arg("ntp");

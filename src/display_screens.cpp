@@ -392,18 +392,18 @@ void displayAmbience(
       display.println("No Light");
     }
     
-    // 行3: 騒音レベル（dB）
+    // 行3: 補正後の騒音（マイク基板のノイズの高さを引いた dB。静かなときが +0）
     if (max9814_enabled) {
       display.setCursor(2, 120);
-      display.print("Sound: ");
+      display.print("Sound: +");
+      display.print(lroundf(max9814_data.db_above_floor));
+      display.println("dB");
+
+      // 行4: 引く前の騒音レベル（静かにしたときのこの値を、設定ページの「引く値」に入れる）
+      display.setCursor(2, 152);
+      display.print("Raw:   ");
       display.print(lroundf(max9814_data.db_level));
       display.println("dB");
-      
-      // 行4: RMS電圧値
-      display.setCursor(2, 152);
-      display.print("RMS:   ");
-      display.print(max9814_data.rms_voltage, 3);
-      display.println("V");
     } else {
       display.setCursor(2, 120);
       display.println("No Sound");
@@ -1736,4 +1736,110 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
   if (!isnan(trend_3h)) {
     drawTrendBadge(trend_3h);
   }
+}
+
+// ============================================================================
+// 画面11: Sound（レトロな VU メーター）
+// ============================================================================
+// 針が指すのは補正後の騒音（騒音レベルからマイク基板のノイズの高さを引いた dB。静かなときが +0。引く値は設定ページで決める）。
+// 目盛りは +0〜+40dB で 5dB ごと。+30dB から右は黒い帯（うるさい）。
+// +40dB を超えても針は +40 で止め、下の数字はそのまま出す。
+// 下の帯には補正後の数字を出す。絵は画像を持たずに、線と円で描く
+
+#define VU_CX 100           // 針の軸の位置
+#define VU_CY 148
+#define VU_R 92             // 目盛りの弧の半径
+#define VU_DB_MAX 40        // 目盛りの右端（+dB）
+#define VU_LOUD_DB 30       // ここから右が黒い帯（うるさい）
+#define VU_ANGLE_LEFT 140   // +0dB の向き（度。右が 0 で反時計回り）
+#define VU_ANGLE_SPAN 100   // +0〜+40dB の角度の幅（度）
+#define VU_NEEDLE_R 84      // 針の長さ
+
+// 軸から +db の向きに r 離れた位置
+static void vuPoint(float db, float r, float* x, float* y) {
+  float a = (VU_ANGLE_LEFT - db * VU_ANGLE_SPAN / VU_DB_MAX) * DEG_TO_RAD;
+  *x = VU_CX + r * cosf(a);
+  *y = VU_CY - r * sinf(a);
+}
+
+// +db0〜+db1 の弧を、半径 pen_r の丸いペンでなぞる（1dB ごとの線分）
+static void drawVUArc(int db0, int db1, int16_t pen_r) {
+  float px, py;
+  vuPoint(db0, VU_R, &px, &py);
+  for (int db = db0 + 1; db <= db1; db++) {
+    float x, y;
+    vuPoint(db, VU_R, &x, &y);
+    drawRoundLine(px, py, x, y, pen_r);
+    px = x;
+    py = y;
+  }
+}
+
+void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
+  if (!sensor_enabled) {
+    display.setCursor(2, 56);
+    display.println("MAX9814");
+    display.setCursor(2, 88);
+    display.println("Not");
+    display.setCursor(2, 120);
+    display.println("Connected");
+    return;
+  }
+
+  // メーターの窓（角の丸い 3px の枠）
+  for (int i = 0; i < 3; i++) {
+    display.drawRoundRect(6 + i, 6 + i, 188 - 2 * i, 156 - 2 * i, 10 - i, GxEPD_BLACK);
+  }
+
+  // 目盛りの弧と、うるさい帯（太さ 9px）
+  drawVUArc(0, VU_DB_MAX, 1);
+  drawVUArc(VU_LOUD_DB, VU_DB_MAX, 4);
+
+  // 目盛りの線（5dB ごと。10dB ごとは長くして +dB の数字を添える）
+  beginU8g2Fonts();
+  u8g2Fonts.setFontMode(1);  // 背景を塗らない
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
+  u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+  for (int db = 0; db <= VU_DB_MAX; db += 5) {
+    bool major = db % 10 == 0;
+    float x0, y0, x1, y1;
+    vuPoint(db, VU_R, &x0, &y0);
+    vuPoint(db, VU_R - (major ? 12 : 7), &x1, &y1);
+    drawRoundLine(x0, y0, x1, y1, 1);
+    if (major) {
+      char label[4];
+      snprintf(label, sizeof(label), "+%d", db);
+      float lx, ly;
+      vuPoint(db, VU_R + 14, &lx, &ly);
+      printCentered(label, lroundf(lx), lroundf(ly) + 4);  // 字の高さの半分下げて、中心を合わせる
+    }
+  }
+
+  // 文字盤の単位（本物の VU メーターの「VU」の位置）。針はこの上を通る
+  u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+  printCentered("dB", VU_CX, 110);
+
+  // 針と軸
+  float db = max9814_data.db_above_floor;
+  float needle_db = constrain(db, 0.0f, (float)VU_DB_MAX);
+  float nx, ny;
+  vuPoint(needle_db, VU_NEEDLE_R, &nx, &ny);
+  drawRoundLine(VU_CX, VU_CY, nx, ny, 1);
+  display.fillCircle(VU_CX, VU_CY, 8, GxEPD_BLACK);
+
+  // 下の帯: 補正後の数字（「+18」と「dB」を合わせて真ん中に寄せる）
+  char value[8];
+  snprintf(value, sizeof(value), "+%ld", lroundf(db));
+  int16_t bx, by;
+  uint16_t value_w, unit_w, bh;
+  display.setFont(&FreeSans18pt7b);
+  display.getTextBounds(value, 0, 0, &bx, &by, &value_w, &bh);
+  display.setFont(&FreeSans12pt7b);
+  display.getTextBounds("dB", 0, 0, &bx, &by, &unit_w, &bh);
+  display.setFont(&FreeSans18pt7b);
+  display.setCursor(VU_CX - (value_w + 2 + unit_w) / 2, 194);
+  display.print(value);
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(display.getCursorX() + 2, 194);
+  display.print("dB");
 }
