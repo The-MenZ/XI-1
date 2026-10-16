@@ -160,7 +160,7 @@ u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
 
 u8g2Fonts.setFont(u8g2_font_logisoso42_tn); // 大きな数字
 u8g2Fonts.setCursor(73, 90);                // y はベースライン
-u8g2Fonts.print((int)temperature);
+u8g2Fonts.print(lroundf(temperature));      // 四捨五入して整数で表示
 
 u8g2Fonts.setFont(u8g2_font_helvB18_tf);
 u8g2Fonts.setCursor(80, 120);

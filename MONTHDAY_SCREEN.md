@@ -40,11 +40,11 @@
 
 ### ヘッダー宣言 (`display_screens.h`)
 ```cpp
-// 画面6: 月日表示（シンプル & 洒落たデザイン）
+// 画面5: 月日表示（シンプル & 洒落たデザイン）
 void displayMonthDay(int month, int day);
 ```
 
-※ ヘッダーのコメントは1始まりの番号（画面6）ですが、`main.cpp` の `SCREEN_ENABLED` / `switch` では 5 番です。
+※ 画面番号は `main.cpp` の `SCREEN_ENABLED` / `switch` の添字（0始まり）と同じです。
 
 ### 実装 (`display_screens.cpp`)
 ```cpp

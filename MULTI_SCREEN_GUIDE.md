@@ -162,7 +162,7 @@ HUMIDITY
 - 下部に過去24時間の折れ線グラフ（温度: 最小−2 °C〜最大+2 °C の自動レンジ。幅が5 °C 未満なら平均±5 °C / 湿度: 0〜100% 固定）
 
 **履歴データ:**
-- `main.cpp` の `temp_history` / `humid_history`（`HISTORY_SIZE` = 144点 = 10分ごと × 24時間）
+- `main.cpp` の `temp_history` / `humid_history`（`HISTORY_SIZE` = 144点 = 10分ごと × 24時間。定義は `display_screens.h`）
 - 起動時に全144点をその時点のセンサー値で埋めるため、起動直後のグラフは平らな線になる
 - RAM 上にのみ保持（再起動で消える）
 - AHT21 がなく BMP280 だけの場合は温度のみ表示（湿度ゲージの塗りと湿度グラフは描かない）

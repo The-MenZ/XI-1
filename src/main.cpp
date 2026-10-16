@@ -114,7 +114,7 @@ bool sensor_mics5524_enabled = false;
 // ============================================================================
 // データ履歴管理（過去24時間分）
 // ============================================================================
-#define HISTORY_SIZE 144  // 24時間 ÷ 10分 = 144データポイント
+// HISTORY_SIZE（144 = 24時間 ÷ 10分）は display_screens.h で定義
 float temp_history[HISTORY_SIZE];
 float humid_history[HISTORY_SIZE];
 int history_index = 0;

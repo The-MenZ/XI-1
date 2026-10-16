@@ -221,7 +221,7 @@ switch(display_mode) {
 
 - `isWiFiConnected()` は関数（`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
 - 時刻同期の判定は `isTimeSynced()`（`time(nullptr) > 1704067200`、つまり 2024-01-01 以降なら同期済み）
-- `temp_history` / `humid_history` は `HISTORY_SIZE`（144）要素のリングバッファで、10分ごとに保存されます
+- `temp_history` / `humid_history` は `HISTORY_SIZE`（144、`display_screens.h` で定義）要素のリングバッファで、10分ごとに保存されます。表示側の添字計算も同じ `HISTORY_SIZE` を使うので、件数を変えるときは定義を1か所変えるだけで済みます
 
 ---
 

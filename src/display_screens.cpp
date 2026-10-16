@@ -12,7 +12,7 @@
 extern String getAQIStatusEnglish(uint8_t aqi);
 
 // ============================================================================
-// 画面1: Air Quality (空気質)
+// 画面0: Air Quality (空気質)
 // ============================================================================
 void displayAirQuality(const ENS160Data& ens160_data, bool sensor_enabled) {
   // タイトル
@@ -53,7 +53,7 @@ void displayAirQuality(const ENS160Data& ens160_data, bool sensor_enabled) {
 }
 
 // ============================================================================
-// 画面2: Climate (温熱環境)
+// 画面1: Climate (温熱環境)
 // ============================================================================
 void displayClimate(
   const AHT21Data& aht21_data, bool aht21_enabled,
@@ -69,12 +69,12 @@ void displayClimate(
       display.setCursor(2, 56);
       display.print("Temp:  ");
       // 自己発熱補正済みの値（補正量は main.cpp の AHT21_TEMP_OFFSET）
-      display.print((int)aht21_data.temperature);
+      display.print(lroundf(aht21_data.temperature));
       display.println("C");
     } else if (bmp280_enabled) {
       display.setCursor(2, 56);
       display.print("Temp:  ");
-      display.print((int)bmp280_data.temperature);
+      display.print(lroundf(bmp280_data.temperature));
       display.println("C");
     }
     
@@ -82,7 +82,7 @@ void displayClimate(
     if (aht21_enabled) {
       display.setCursor(2, 88);
       display.print("RH:    ");
-      display.print((int)aht21_data.humidity);
+      display.print(lroundf(aht21_data.humidity));
       display.println("%");
     }
     
@@ -90,7 +90,7 @@ void displayClimate(
     if (bmp280_enabled) {
       display.setCursor(2, 120);
       display.print("hPa:   ");
-      display.print((int)bmp280_data.pressure);
+      display.print(lroundf(bmp280_data.pressure));
       display.println("");
     }
     
@@ -98,7 +98,7 @@ void displayClimate(
     if (bmp280_enabled) {
       display.setCursor(2, 152);
       display.print("Alt:   ");
-      display.print((int)abs(bmp280_data.altitude));
+      display.print(lroundf(fabsf(bmp280_data.altitude)));
       display.println("m");
     }
   } else {
@@ -112,7 +112,7 @@ void displayClimate(
 }
 
 // ============================================================================
-// 画面3: Ambience (視聴覚環境)
+// 画面2: Ambience (視聴覚環境)
 // ============================================================================
 void displayAmbience(
   const VEML7700Data& veml7700_data, bool veml7700_enabled,
@@ -127,7 +127,7 @@ void displayAmbience(
     if (veml7700_enabled) {
       display.setCursor(2, 56);
       display.print("Lux:   ");
-      display.print((int)veml7700_data.lux);
+      display.print(lroundf(veml7700_data.lux));
       display.println("lx");
       
       // 行2: ホワイトチャネル（参考値）
@@ -144,7 +144,7 @@ void displayAmbience(
     if (max9814_enabled) {
       display.setCursor(2, 120);
       display.print("Sound: ");
-      display.print((int)max9814_data.db_level);
+      display.print(lroundf(max9814_data.db_level));
       display.println("dB");
       
       // 行4: RMS電圧値
@@ -167,7 +167,7 @@ void displayAmbience(
 }
 
 // ============================================================================
-// 画面4: Gas Sensor (ガスセンサー)
+// 画面3: Gas Sensor (ガスセンサー)
 // ============================================================================
 void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled) {
   // タイトル
@@ -195,7 +195,7 @@ void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled) {
 }
 
 // ============================================================================
-// 画面5: 日時表示（NTP同期時刻）
+// 画面4: 日時表示（NTP同期時刻）
 // ============================================================================
 void displayDateTime(bool isWiFiConnected, const String& dateTimeStr) {
   display.setTextSize(1);
@@ -218,7 +218,7 @@ void displayDateTime(bool isWiFiConnected, const String& dateTimeStr) {
 }
 
 // ============================================================================
-// 画面6: 月日表示（シンプル & 洒落たデザイン）
+// 画面5: 月日表示（シンプル & 洒落たデザイン）
 // ============================================================================
 void displayMonthDay(int month, int day) {
   display.setTextColor(GxEPD_BLACK);
@@ -244,7 +244,7 @@ void displayMonthDay(int month, int day) {
 }
 
 // ============================================================================
-// 画面7: WiFi QRコード表示
+// 画面6: WiFi QRコード表示
 // ============================================================================
 
 // 誤り訂正レベル L・バイトモードで各バージョンに入る最大バイト数（v1〜v10）
@@ -344,7 +344,7 @@ void displayWiFiQR(const String& ssid, const String& password) {
 }
 
 // ============================================================================
-// 画面8: Climate Modern (温度/湿度モダンデザイン)
+// 画面7: Climate Modern (温度/湿度モダンデザイン)
 // ============================================================================
 void displayClimateModern(
   const AHT21Data& aht21_data, bool aht21_enabled,
@@ -379,7 +379,7 @@ void displayClimateModern(
   if (aht21_enabled) {
     // 自己発熱補正済みの値（補正量は main.cpp の AHT21_TEMP_OFFSET）
     temperature = aht21_data.temperature;
-    humidity = (int)aht21_data.humidity;
+    humidity = (int)lroundf(aht21_data.humidity);
   } else if (bmp280_enabled) {
     temperature = bmp280_data.temperature;
   }
@@ -464,7 +464,7 @@ void displayClimateModern(
   
   // 温度を整数で表示（小数点なし）
   u8g2Fonts.setCursor(73, 90);
-  u8g2Fonts.print((int)temperature);
+  u8g2Fonts.print(lroundf(temperature));
   
   // 湿度を右側に表示
   if (aht21_enabled) {
@@ -529,8 +529,8 @@ void displayClimateModern(
     // 温度グラフを描画
     for (int i = 0; i < history_count - 1; i++) {
       // 古い順に描画（history_indexから開始して円環状にアクセス）
-      int idx1 = (history_index - history_count + i + 144) % 144;
-      int idx2 = (history_index - history_count + i + 1 + 144) % 144;
+      int idx1 = (history_index - history_count + i + HISTORY_SIZE) % HISTORY_SIZE;
+      int idx2 = (history_index - history_count + i + 1 + HISTORY_SIZE) % HISTORY_SIZE;
       
       float t1 = temp_history[idx1];
       float t2 = temp_history[idx2];
@@ -569,8 +569,8 @@ void displayClimateModern(
     // データがある場合のみ湿度グラフを描画
     if (history_count >= 2) {
       for (int i = 0; i < history_count - 1; i++) {
-        int idx1 = (history_index - history_count + i + 144) % 144;
-        int idx2 = (history_index - history_count + i + 1 + 144) % 144;
+        int idx1 = (history_index - history_count + i + HISTORY_SIZE) % HISTORY_SIZE;
+        int idx2 = (history_index - history_count + i + 1 + HISTORY_SIZE) % HISTORY_SIZE;
         
         float h1 = humid_history[idx1];
         float h2 = humid_history[idx2];
