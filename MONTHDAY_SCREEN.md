@@ -105,6 +105,7 @@ case 5: {
 | 6 | WiFi QR | WiFi 接続用 QR コード | 有効 |
 | 7 | Climate Modern | 温湿度の円形ゲージ＋過去24時間グラフ | 有効 |
 | 8 | Settings QR | 設定ページの QR コード | 有効 |
+| 9 | Pressure | 天気図風の H/L と等圧線＋3時間の傾向 | 有効 |
 
 ---
 
@@ -128,6 +129,8 @@ WiFi QR
 Climate Modern
     ↓ 10秒
 Settings QR
+    ↓ 10秒
+Pressure
     ↓ 10秒
 [リピート]
 ```

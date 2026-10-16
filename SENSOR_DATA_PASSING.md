@@ -44,6 +44,11 @@ void displayClimateModern(                                                    //
   const float* temp_history, const float* humid_history,
   int history_count, int history_index
 );
+void displaySettingsQR(const String& url);                                    // 画面8
+void displayPressure(                                                         // 画面9
+  const BMP280Data& bmp280_data, bool bmp280_enabled,
+  float trend_3h  // 約3時間前からの気圧の変化（hPa）。履歴が3時間分たまるまでは NAN
+);
 ```
 
 ## 🧩 データ構造体（`include/Custom_*.h`）
@@ -52,7 +57,7 @@ void displayClimateModern(                                                    //
 |--------|-----------|
 | `ENS160Data` | `eco2`（ppm）, `tvoc`（ppb）, `aqi`（1〜5。0 は未測定） |
 | `AHT21Data` | `temperature`, `humidity`（自己発熱補正後）, `raw_temperature`, `raw_humidity`（生値） |
-| `BMP280Data` | `temperature`（°C）, `pressure`（hPa）, `altitude`（m） |
+| `BMP280Data` | `temperature`（°C）, `pressure`（hPa、設置場所の気圧）, `sea_level_pressure`（hPa、設定ページの標高で海面の高さに換算した気圧）, `altitude`（m） |
 | `VEML7700Data` | `lux`, `white`, `als`（ALS 生データ） |
 | `MAX9814Data` | `raw_value`, `voltage`, `peak_to_peak`, `rms_voltage`, `db_level`（中央値フィルタ済）, `db_level_raw` |
 | `MICS5524Data` | `raw_value`, `voltage`, `resistance`, `rs_ro_ratio`, `ppm_equivalent`, `heater_enabled`, `calibrated` |
@@ -225,12 +230,18 @@ switch(display_mode) {
     // 設定ページ QR 画面 - 設定ページの URL を渡す
     displaySettingsQR(getSettingsURL());
     break;
+
+  case 9:
+    // Pressure 画面 - 気圧データと、約3時間前からの変化を渡す
+    displayPressure(bmp280_data, sensor_bmp280_enabled, pressureTrend3h(bmp280_data.pressure));
+    break;
 }
 ```
 
 - `isWiFiConnected()` は関数（`network.cpp`。`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
 - 時刻同期の判定は `isTimeSynced()`（`time(nullptr) > 1704067200`、つまり 2024-01-01 以降なら同期済み）
 - `temp_history` / `humid_history` は `HISTORY_SIZE`（144、`display_screens.h` で定義）要素のリングバッファで、10分ごとに保存されます。表示側の添字計算も同じ `HISTORY_SIZE` を使うので、件数を変えるときは定義を1か所変えるだけで済みます
+- 気圧の履歴 `pressure_history` は `main.cpp` の中だけで使う18件のリングバッファ（10分ごと、hPa×10 の整数）。表示側には `pressureTrend3h()` で計算した変化だけを渡します
 
 ---
 

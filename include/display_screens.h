@@ -60,4 +60,9 @@ void displayClimateModern(
 // 画面8: 設定ページ QRコード表示（中央に歯車。url が空なら未接続の表示）
 void displaySettingsQR(const String& url);
 
+// 画面9: Pressure（天気図風の H/L と等圧線、3時間の気圧の傾向）
+// 海面気圧が 1013 hPa 以上なら H、未満なら L。1013 との間に 4hPa ごとに等圧線を引く
+// trend_3h: 約3時間前からの気圧の変化（hPa）。履歴が3時間分たまるまでは NAN（傾向のバッジを出さない）
+void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float trend_3h);
+
 #endif // DISPLAY_SCREENS_H

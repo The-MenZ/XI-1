@@ -128,6 +128,12 @@ static void handleRoot() {
           "タイムゾーン（例: JST-9）<input type=text name=tz value=\"" + htmlEscape(settings.timezone) + "\">"
           "</fieldset>";
 
+  // 気圧（Pressure 画面の H/L は海面の高さに換算した気圧で判定する）
+  html += "<fieldset><legend>気圧</legend>"
+          "設置場所の標高（m。建物の上の階なら階の高さも足す）<input type=number name=alt min=" +
+          String(ALTITUDE_M_MIN) + " max=" + String(ALTITUDE_M_MAX) + " value=" + String(settings.altitude_m) + ">"
+          "</fieldset>";
+
   html += "<button>保存</button></form>";
 
   html += "<fieldset><legend>ガスセンサー（MICS5524）</legend>"
@@ -169,6 +175,7 @@ static void handleSave() {
     settings.screen_mask = mask;
   }
   settings.interval_sec = constrain(server.arg("iv").toInt(), INTERVAL_SEC_MIN, INTERVAL_SEC_MAX);
+  settings.altitude_m = constrain(server.arg("alt").toInt(), ALTITUDE_M_MIN, ALTITUDE_M_MAX);
 
   // 時刻（空欄なら変更しない）
   String ntp = server.arg("ntp");

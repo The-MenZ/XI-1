@@ -116,6 +116,9 @@ graph TB
 | **6: WiFi QR** | WiFi QR コード（中央に WiFi マーク。AP モード中は本体の AP） | WiFi接続情報 |
 | **7: Climate Modern** | 温度・湿度の円形ゲージ＋過去24時間グラフ | AHT21・BMP280 |
 | **8: Settings QR** | 設定ページの URL の QR コード（中央に歯車） | 本体の IP アドレス |
+| **9: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
+
+画面9の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md) を参照。
 
 ---
 
@@ -143,6 +146,7 @@ graph TB
 | WiFi | SSID（スキャン一覧から選択。一覧にない場合は手入力）とパスワード。変更すると再起動して接続 |
 | 画面 | 画面ごとの表示 ON/OFF、切り替え間隔（5〜3600秒、既定10秒） |
 | 時刻 | NTP サーバー（既定 `pool.ntp.org`）、タイムゾーン（POSIX 形式、既定 `JST-9`） |
+| 気圧 | 設置場所の標高（−500〜4000 m、既定 0 m）。画面9の気圧を海面の高さに換算するのに使う |
 | ガスセンサー | 今の空気を基準値（Ro）として取り直す |
 | 本体 | 再起動、初期化（保存した設定を消して既定値に戻す） |
 
@@ -159,6 +163,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面6: WiFi QR
   true,   // 画面7: Climate Modern
   true,   // 画面8: Settings QR
+  true,   // 画面9: Pressure
 };
 ```
 

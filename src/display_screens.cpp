@@ -1,15 +1,19 @@
 #include "display_screens.h"
-#include <Fonts/FreeSans24pt7b.h>
+// 全画面共通のフォント FreeMonoBold12pt7b は main.cpp が読み込んで設定する
+// （ここでも使うとフォントのデータが2つ入ってしまう）
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
-#include <Fonts/FreeMonoBold12pt7b.h>
 #include <qrcode.h>
 #include <U8g2_for_Adafruit_GFX.h>
 
 // 関数プロトタイプ（main.cppで定義）
 extern String getAQIStatusEnglish(uint8_t aqi);
+
+// U8g2 のフォントで描くためのオブジェクト（Climate Modern と Pressure の画面で共用）
+// begin() は描画先を覚えるだけなので、使う画面の先頭で毎回呼ぶ
+static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 
 // ============================================================================
 // 画面0: Air Quality (空気質)
@@ -436,15 +440,8 @@ void displayClimateModern(
   const float* temp_history, const float* humid_history, 
   int history_count, int history_index
 ) {
-  // U8g2フォント用のオブジェクト作成
-  static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
-  static bool u8g2_initialized = false;
-  
-  if (!u8g2_initialized) {
-    u8g2Fonts.begin(display);
-    u8g2_initialized = true;
-  }
-  
+  u8g2Fonts.begin(display);
+
   // センサーデータチェック
   if (!aht21_enabled && !bmp280_enabled) {
     display.setCursor(2, 56);
@@ -670,5 +667,191 @@ void displayClimateModern(
         display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
       }
     }
+  }
+}
+
+// ============================================================================
+// 画面9: Pressure（天気図風の H/L と等圧線、3時間の気圧の傾向）
+// ============================================================================
+// 中央に H / L と今の海面気圧を出し、1013 hPa との間に 4hPa ごとに等圧線を引く
+// 線が多いほど 1013 から離れた強い高気圧・低気圧。右下のバッジは3時間の変化
+
+#define PRESSURE_STANDARD 1013   // H と L の境目（標準気圧 hPa）
+#define ISOBAR_STEP 4            // 等圧線の間隔（hPa。天気図と同じ）
+#define ISOBAR_CENTER_X 100
+#define ISOBAR_CENTER_Y 92
+#define ISOBAR_FIRST_R 62        // 一番内側の線の半径（px。H/L と気圧の数字を囲む）
+#define ISOBAR_SPACING 14        // 線どうしの間隔（px）
+#define ISOBAR_LAST_R 118        // 一番外側の線の半径の上限（超える本数なら間隔を詰める）
+#define ISOBAR_MAX 12            // 描く線の上限（間隔 約5px。1013 から 48hPa 離れた台風並み）
+#define ISOBAR_SEGMENTS 90       // 1周を何本の線分で描くか
+#define ISOBAR_PHASE_STEP 0.7f   // 線ごとに揺らし方をずらす量（同じ形が重ならないように）
+#define ISOBAR_LABEL_INNER_T -0.5f  // 一番内側の線の気圧を書く角度（rad、右上）
+#define ISOBAR_LABEL_OUTER_T 2.24f  // 一番外側の線の気圧を書く角度（rad、左下の角の方向）
+#define TREND_STEADY 1.0f        // 3時間の変化がこれ未満なら横ばい（→）
+#define TREND_RAPID 3.0f         // これ以上なら急な変化（▲▲ / ▼▼）
+
+// 等圧線の半径。角度 t によって少し揺らし、手描きの天気図のような形にする
+static float isobarRadius(float base_r, float t, float phase) {
+  return base_r * (1.0f + 0.06f * sinf(2 * t + phase) + 0.035f * sinf(3 * t + 2 * phase + 1));
+}
+
+// 等圧線を1本描く（太さを 2px にするため、半径を 1px ずらして2周描く）
+static void drawIsobar(float base_r, float phase) {
+  for (int w = 0; w < 2; w++) {
+    int16_t prev_x = 0;
+    int16_t prev_y = 0;
+    for (int j = 0; j <= ISOBAR_SEGMENTS; j++) {
+      float t = j * (float)TWO_PI / ISOBAR_SEGMENTS;
+      float r = isobarRadius(base_r + w, t, phase);
+      int16_t x = ISOBAR_CENTER_X + lroundf(r * cosf(t));
+      int16_t y = ISOBAR_CENTER_Y + lroundf(r * sinf(t));
+      if (j > 0) {
+        display.drawLine(prev_x, prev_y, x, y, GxEPD_BLACK);
+      }
+      prev_x = x;
+      prev_y = y;
+    }
+  }
+}
+
+// 等圧線の角度 t の位置に、その線の気圧を白い箱に載せて書く
+// 箱が画面からはみ出すときは、画面の内側に寄せる
+static void drawIsobarLabel(float base_r, float phase, float t, int value) {
+  float r = isobarRadius(base_r, t, phase);
+  int16_t x = ISOBAR_CENTER_X + lroundf(r * cosf(t));
+  int16_t y = ISOBAR_CENTER_Y + lroundf(r * sinf(t));
+
+  String label(value);
+  display.setFont(&FreeSans9pt7b);
+  display.setTextSize(1);
+  int16_t bx, by;
+  uint16_t bw, bh;
+  display.getTextBounds(label, 0, 0, &bx, &by, &bw, &bh);
+  int16_t box_w = bw + 4;
+  int16_t box_h = bh + 4;
+  int16_t left = constrain(x - box_w / 2, 0, display.width() - box_w);
+  int16_t top = constrain(y - box_h / 2, 0, display.height() - box_h);
+  display.fillRect(left, top, box_w, box_h, GxEPD_WHITE);
+  display.setCursor(left + 2 - bx, top + 2 - by);
+  display.print(label);
+}
+
+// 傾向の三角（幅 12px・高さ 10px。top は三角の上端）
+static void drawTrendTriangle(int16_t cx, int16_t top, bool up) {
+  if (up) {
+    display.fillTriangle(cx, top, cx - 6, top + 10, cx + 6, top + 10, GxEPD_WHITE);
+  } else {
+    display.fillTriangle(cx - 6, top, cx + 6, top, cx, top + 10, GxEPD_WHITE);
+  }
+}
+
+// 右下の3時間の傾向のバッジ（黒い角丸に白抜き）
+// ▲ / ▼: 1〜3hPa、▲▲ / ▼▼: 3hPa 以上、→: 1hPa 未満。三角の大きさはどれも同じ
+static void drawTrendBadge(float trend) {
+  // 白い縁取りで等圧線から切り離してから、黒いバッジを描く
+  display.fillRoundRect(116, 152, 82, 46, 11, GxEPD_WHITE);
+  display.fillRoundRect(120, 156, 74, 38, 7, GxEPD_BLACK);
+
+  // 表示する値（小数1桁）で判定する（「1.0」と出ているのに横ばい、とならないように）
+  float change = roundf(fabsf(trend) * 10) / 10;
+  const int16_t cx = 136;  // 三角の左右の中心（バッジの上下の中心は y=175）
+  if (change < TREND_STEADY) {
+    display.fillTriangle(cx - 5, 169, cx - 5, 181, cx + 5, 175, GxEPD_WHITE);
+  } else if (change >= TREND_RAPID) {
+    drawTrendTriangle(cx, 163, trend > 0);
+    drawTrendTriangle(cx, 176, trend > 0);
+  } else {
+    drawTrendTriangle(cx, 170, trend > 0);
+  }
+
+  // 変化の大きさ（符号は三角の向きで表す）と、その上に「3h」
+  u8g2Fonts.setFontMode(1);  // 背景を塗らない
+  u8g2Fonts.setForegroundColor(GxEPD_WHITE);
+  u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+  u8g2Fonts.setCursor(190 - u8g2Fonts.getUTF8Width("3h"), 168);
+  u8g2Fonts.print("3h");
+
+  char value[8];
+  snprintf(value, sizeof(value), "%.1f", change);
+  u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+  u8g2Fonts.setCursor(190 - u8g2Fonts.getUTF8Width(value), 190);
+  u8g2Fonts.print(value);
+}
+
+void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float trend_3h) {
+  if (!bmp280_enabled) {
+    display.setCursor(2, 56);
+    display.println("BMP280");
+    display.setCursor(2, 88);
+    display.println("Not");
+    display.setCursor(2, 120);
+    display.println("Connected");
+    return;
+  }
+
+  int pressure = lroundf(bmp280_data.sea_level_pressure);
+  bool high = pressure >= PRESSURE_STANDARD;
+
+  // 等圧線: 今の気圧から 1013 に向かって 4hPa ごと（今の気圧ちょうどの線は引かない）
+  // first は一番内側（今の気圧に一番近い）線の気圧
+  int first;
+  int count;
+  if (high) {
+    first = (pressure - 1) / ISOBAR_STEP * ISOBAR_STEP;  // 今より低い、一番近い 4 の倍数
+    count = first > PRESSURE_STANDARD ? (first - PRESSURE_STANDARD - 1) / ISOBAR_STEP + 1 : 0;
+  } else {
+    first = (pressure / ISOBAR_STEP + 1) * ISOBAR_STEP;  // 今より高い、一番近い 4 の倍数
+    count = first < PRESSURE_STANDARD ? (PRESSURE_STANDARD - 1 - first) / ISOBAR_STEP + 1 : 0;
+  }
+  int step = high ? -ISOBAR_STEP : ISOBAR_STEP;
+  if (count > ISOBAR_MAX) {
+    count = ISOBAR_MAX;
+  }
+
+  // 外側の線が ISOBAR_LAST_R を超える本数なら、間隔を詰めて収める（台風のように線が混み合う）
+  float spacing = ISOBAR_SPACING;
+  if (count > 1 && ISOBAR_FIRST_R + (count - 1) * ISOBAR_SPACING > ISOBAR_LAST_R) {
+    spacing = (float)(ISOBAR_LAST_R - ISOBAR_FIRST_R) / (count - 1);
+  }
+  for (int i = 0; i < count; i++) {
+    drawIsobar(ISOBAR_FIRST_R + i * spacing, i * ISOBAR_PHASE_STEP);
+  }
+
+  // 線の気圧（一番内側と一番外側の線だけ）。線を描き終えてから載せて、白い箱で線を切る
+  if (count > 0) {
+    drawIsobarLabel(ISOBAR_FIRST_R, 0, ISOBAR_LABEL_INNER_T, first);
+  }
+  if (count > 1) {
+    int last = count - 1;
+    drawIsobarLabel(ISOBAR_FIRST_R + last * spacing, last * ISOBAR_PHASE_STEP,
+                    ISOBAR_LABEL_OUTER_T, first + last * step);
+  }
+
+  // H / L（月日画面と同じ FreeMonoBold24pt7b を2倍にして使う）
+  const char* mark = high ? "H" : "L";
+  display.setFont(&FreeMonoBold24pt7b);
+  display.setTextSize(2);
+  int16_t bx, by;
+  uint16_t bw, bh;
+  display.getTextBounds(mark, 0, 0, &bx, &by, &bw, &bh);
+  display.setCursor(ISOBAR_CENTER_X - bw / 2 - bx, 104);
+  display.print(mark);
+  display.setTextSize(1);
+  display.setFont();
+
+  // 今の海面気圧
+  u8g2Fonts.begin(display);
+  u8g2Fonts.setFontMode(1);  // 背景を塗らない
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
+  u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+  char value[8];
+  snprintf(value, sizeof(value), "%d", pressure);
+  u8g2Fonts.setCursor(ISOBAR_CENTER_X - u8g2Fonts.getUTF8Width(value) / 2, 138);
+  u8g2Fonts.print(value);
+
+  // 3時間分の履歴がたまるまでは傾向のバッジを出さない
+  if (!isnan(trend_3h)) {
+    drawTrendBadge(trend_3h);
   }
 }

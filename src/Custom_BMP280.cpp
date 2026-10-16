@@ -22,10 +22,11 @@ bool CustomBMP280::begin() {
 }
 
 BMP280Data CustomBMP280::read() {
-    BMP280Data data = {0.0f, 0.0f, 0.0f};
+    BMP280Data data = {0.0f, 0.0f, 0.0f, 0.0f};
 
     data.temperature = bmp.readTemperature();
     data.pressure = bmp.readPressure() / 100.0f;  // Pa → hPa
+    data.sea_level_pressure = bmp.seaLevelForAltitude(station_altitude, data.pressure);
     data.altitude = bmp.readAltitude(sea_level_pressure);
 
     return data;
@@ -36,4 +37,8 @@ void CustomBMP280::setSeaLevelPressure(float pressure) {
     Serial.print("📊 BMP280 sea level pressure set to ");
     Serial.print(pressure);
     Serial.println(" hPa");
+}
+
+void CustomBMP280::setStationAltitude(float altitude_m) {
+    station_altitude = altitude_m;
 }

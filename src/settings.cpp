@@ -15,6 +15,7 @@
 #define DEFAULT_INTERVAL_SEC 10
 #define DEFAULT_NTP_SERVER "pool.ntp.org"
 #define DEFAULT_TIMEZONE "JST-9"
+#define DEFAULT_ALTITUDE_M 0  // 0 m なら海面気圧の換算をしないのと同じ
 
 // NVS の名前空間（キーは15文字以内）
 static const char* NVS_NAMESPACE = "xi1";
@@ -40,9 +41,11 @@ void loadSettings(uint16_t default_screen_mask, uint8_t num_screens) {
   settings.interval_sec = prefs.getUShort("interval", DEFAULT_INTERVAL_SEC);
   settings.ntp_server = prefs.getString("ntp", DEFAULT_NTP_SERVER);
   settings.timezone = prefs.getString("tz", DEFAULT_TIMEZONE);
+  settings.altitude_m = prefs.getShort("alt", DEFAULT_ALTITUDE_M);
   prefs.end();
 
   settings.interval_sec = constrain(settings.interval_sec, INTERVAL_SEC_MIN, INTERVAL_SEC_MAX);
+  settings.altitude_m = constrain(settings.altitude_m, ALTITUDE_M_MIN, ALTITUDE_M_MAX);
 }
 
 void saveSettings() {
@@ -55,6 +58,7 @@ void saveSettings() {
   prefs.putUShort("interval", settings.interval_sec);
   prefs.putString("ntp", settings.ntp_server);
   prefs.putString("tz", settings.timezone);
+  prefs.putShort("alt", settings.altitude_m);
   prefs.end();
 }
 

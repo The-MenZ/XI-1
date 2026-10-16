@@ -5,7 +5,7 @@
 このプロジェクトでは 2 種類のフォントが使えます。
 
 - **Adafruit GFX Library のフォント**（`Fonts/` フォルダの 52 種類）: `display.setFont(&...)` で使用。文字は ASCII（0x20～0x7E）のみ
-- **U8g2 のフォント**: `U8g2_for_Adafruit_GFX` ライブラリ経由で GxEPD2 の `display` に描画できます（Climate Modern 画面で使用中）。詳しくは下の「🔤 U8g2 フォント」を参照
+- **U8g2 のフォント**: `U8g2_for_Adafruit_GFX` ライブラリ経由で GxEPD2 の `display` に描画できます（Climate Modern・Pressure 画面で使用中）。詳しくは下の「🔤 U8g2 フォント」を参照
 
 ---
 
@@ -13,17 +13,17 @@
 
 | フォント | 種類 | 使用箇所 |
 |---------|------|---------|
-| `FreeMonoBold12pt7b` | Adafruit GFX | 全画面共通の既定フォント（`main.cpp` の `loop()` で設定）。Air Quality / Climate / Ambience / Gas Sensor 画面 |
-| `FreeSans12pt7b` | Adafruit GFX | 起動時のテスト表示（`main.cpp` の `setup()`）、Date & Time のタイトル |
+| `FreeMonoBold12pt7b` | Adafruit GFX | 全画面共通の既定フォント（`main.cpp` の `loop()` で設定）。Air Quality / Climate / Ambience / Gas Sensor 画面、起動時のテスト表示（`main.cpp` の `setup()`） |
+| `FreeSans12pt7b` | Adafruit GFX | Date & Time のタイトル、Settings QR の未接続表示 |
 | `FreeSans18pt7b` | Adafruit GFX | Date & Time の日時 |
-| `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示 |
-| `FreeMonoBold24pt7b` | Adafruit GFX | Month Day の月・日（`setTextSize(2)` で 2 倍表示） |
+| `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示、Pressure の等圧線の気圧 |
+| `FreeMonoBold24pt7b` | Adafruit GFX | Month Day の月・日、Pressure の H / L（どちらも `setTextSize(2)` で 2 倍表示） |
 | `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度（大きな数字） |
-| `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度 |
-| `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY） |
+| `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度、Pressure の気圧と3時間の変化 |
+| `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY）、Pressure の「3h」 |
 
 ※ Date & Time 画面は既定で無効（`SCREEN_DEFAULT_ENABLED[4] = false`。設定ページで ON にできる）です。
-※ `FreeSans24pt7b`・`FreeMono12pt7b`・`FreeSerif9pt7b` はインクルードされていますが、現在は使われていません。
+※ `main.cpp` は `FreeMonoBold12pt7b` だけを読み込み、ほかのフォントは `display_screens.cpp` で読み込みます（下の注意事項を参照）。
 
 ---
 
@@ -320,7 +320,7 @@ display.println("Humidity: 65%");
 - フォントデータは **フラッシュ（PROGMEM）** に置かれ、RAM はほとんど使いません
 - ファームウェアに入るのは `setFont()` で実際に参照したフォントだけです。インクルードしただけで使っていないフォントはビルド時に取り除かれます
 - 大きいフォント（24pt など）ほどデータが大きくなります
-- 同じ GFX フォントを複数の `.cpp` で使うと、ファイルごとにコピーが入ります（現在 `FreeSans12pt7b` は `main.cpp` と `display_screens.cpp` の両方に入っています）
+- 同じ GFX フォントを複数の `.cpp` で使うと、ファイルごとにコピーが入ります。そのため `main.cpp` では全画面共通の `FreeMonoBold12pt7b` だけを使い、`display_screens.cpp` ではこのフォントを使いません（以前は `FreeSans12pt7b` が両方に入っていて、約 2.7KB 余分でした）
 - U8g2 の日本語フォントは大きい（例: `u8g2_font_unifont_t_japanese1` で約 47KB）ので、必要なものだけ使ってください
 
 ---

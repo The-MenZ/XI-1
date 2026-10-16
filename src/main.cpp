@@ -19,13 +19,10 @@
 // GxEPD2 用フォント定義
 // ============================================================================
 // Adafruit GFX Library フォント
-#include <Fonts/FreeSans24pt7b.h>
-#include <Fonts/FreeSans18pt7b.h>
-#include <Fonts/FreeSans12pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeMono12pt7b.h>
+// フォントのデータは読み込んだ .cpp ごとに1つずつ入るので、main.cpp と display_screens.cpp で
+// 同じフォントを使うと2つ入ってしまう。main.cpp では全画面共通のフォントだけを使い、
+// 各画面のフォントは display_screens.cpp で読み込む
 #include <Fonts/FreeMonoBold12pt7b.h>
-#include <Fonts/FreeSerif9pt7b.h>
 
 // ============================================================================
 // WiFi + NTP 設定
@@ -123,13 +120,24 @@ unsigned long last_history_save = 0;
 const unsigned long HISTORY_INTERVAL = 10 * 60 * 1000;  // 10分（ミリ秒）
 
 // ============================================================================
+// 気圧の履歴（Pressure 画面の3時間の傾向矢印用）
+// ============================================================================
+// 温湿度の履歴と同じ10分ごとに、設置場所の気圧を hPa×10 の整数で保存する
+// 18件たまると、一番古い値が約3時間前（170〜180分前）になる
+#define PRESSURE_HISTORY_SIZE 18
+int16_t pressure_history[PRESSURE_HISTORY_SIZE];
+uint8_t pressure_history_index = 0;
+uint8_t pressure_history_count = 0;
+
+// ============================================================================
 // 画面表示の有効/無効設定
 // ============================================================================
 // 各画面の有効/無効は設定ページで変更できる（NVS に保存）
 // ここは設定を保存する前（初回起動時・初期化後）の既定値
 // 無効な画面はスキップして次の有効な画面を表示します
 // ============================================================================
-#define NUM_SCREENS 9
+// 画面の番号は NVS に保存した screen_mask のビット位置なので、新しい画面は末尾に足す
+#define NUM_SCREENS 10
 #define SCREEN_WIFI_QR 6
 #define SCREEN_SETTINGS_QR 8
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
@@ -142,6 +150,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面6: WiFi QR Code (WiFi QR)
   true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
   true,   // 画面8: Settings QR Code (設定ページの URL)
+  true,   // 画面9: Pressure (天気図風の H/L と等圧線)
 };
 
 // 設定ページのチェックボックスに出す画面名
@@ -155,6 +164,7 @@ const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "WiFi QR",
   "Climate Modern（温湿度グラフ）",
   "Settings QR（設定ページ）",
+  "Pressure（気圧 H/L）",
 };
 
 uint16_t defaultScreenMask() {
@@ -189,6 +199,25 @@ uint8_t countEnabledScreens() {
     if (isScreenEnabled(i)) count++;
   }
   return count;
+}
+
+// 気圧の履歴に今の値を足す
+// 設置場所の気圧を保存するので、設定ページで標高を変えても傾向はずれない
+void savePressureHistory(float pressure) {
+  pressure_history[pressure_history_index] = (int16_t)lroundf(pressure * 10);
+  pressure_history_index = (pressure_history_index + 1) % PRESSURE_HISTORY_SIZE;
+  if (pressure_history_count < PRESSURE_HISTORY_SIZE) {
+    pressure_history_count++;
+  }
+}
+
+// 約3時間前からの気圧の変化（hPa）。履歴がまだ3時間分たまっていなければ NAN
+float pressureTrend3h(float pressure) {
+  if (pressure_history_count < PRESSURE_HISTORY_SIZE) {
+    return NAN;
+  }
+  // 満タンのときは、次に書き込む位置に一番古い値が入っている
+  return pressure - pressure_history[pressure_history_index] / 10.0f;
 }
 
 // 関数プロトタイプ宣言
@@ -366,7 +395,7 @@ void setup() {
   do {
     display.fillScreen(GxEPD_WHITE);
     display.setTextColor(GxEPD_BLACK);
-    display.setFont(&FreeSans12pt7b);
+    display.setFont(&FreeMonoBold12pt7b);
     display.setCursor(10, 50);
     display.println("TEST");
     display.setCursor(10, 100);
@@ -454,7 +483,13 @@ void setup() {
   last_history_save = millis();  // 初回保存時刻を記録
   
   Serial.printf("   ✅ %d個のデータポイントを初期化完了\n", HISTORY_SIZE);
-  
+
+  // 気圧の履歴は起動時の値を1件だけ入れる
+  // （温湿度のように今の値で埋めると、3時間たつまで傾向が「横ばい」と出てしまう）
+  if (sensor_bmp280_enabled) {
+    savePressureHistory(bmp280.read().pressure);
+  }
+
   Serial.println("\n=================================================================");
   Serial.println("  準備完了！ loop開始\n");
   Serial.println("=================================================================\n");
@@ -492,6 +527,8 @@ void loop() {
       aht21_data = aht21.read();
     }
     if (sensor_bmp280_enabled) {
+      // 設定ページで標高を変えたらすぐ海面気圧に反映されるよう、毎回渡す
+      bmp280.setStationAltitude(settings.altitude_m);
       bmp280_data = bmp280.read();
     }
     if (sensor_veml7700_enabled) {
@@ -522,7 +559,10 @@ void loop() {
         temp_history[history_index] = bmp280_data.temperature;
         humid_history[history_index] = 0;  // BMP280には湿度センサーなし
       }
-      
+      if (sensor_bmp280_enabled) {
+        savePressureHistory(bmp280_data.pressure);
+      }
+
       history_index = (history_index + 1) % HISTORY_SIZE;
       if (history_count < HISTORY_SIZE) {
         history_count++;
@@ -588,7 +628,10 @@ void loop() {
         Serial.print("  🔽 気圧(BMP280): ");
         Serial.print(bmp280_data.pressure, 1);
         Serial.println(" hPa");
-        
+
+        Serial.printf("  🔽 海面気圧(標高 %d m で換算): %.1f hPa\n",
+                      settings.altitude_m, bmp280_data.sea_level_pressure);
+
         Serial.print("  📍 高度(BMP280): ");
         Serial.print(abs(bmp280_data.altitude), 1);
         Serial.println(" m");
@@ -745,6 +788,10 @@ void loop() {
         case SCREEN_SETTINGS_QR:
           // 設定ページの URL の QRコード
           displaySettingsQR(getSettingsURL());
+          break;
+        case 9:
+          // Pressure（天気図風の H/L と等圧線、3時間の傾向）
+          displayPressure(bmp280_data, sensor_bmp280_enabled, pressureTrend3h(bmp280_data.pressure));
           break;
         default:
           // 無効な画面モード（デフォルトケース）
