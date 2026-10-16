@@ -37,7 +37,7 @@ include/
 src/
   └─ Custom_VEML7700.cpp    # 実装ファイル
   └─ main.cpp               # 初期化・10秒ごとの読み取り・シリアル出力
-  └─ display_screens.cpp    # e-Paper の Ambience 画面（displayAmbience）
+  └─ display_screens.cpp    # e-Paper の Light 画面（displayLight。猫の目）と Ambience 画面（displayAmbience）
 ```
 
 ### 3. データ構造
@@ -152,7 +152,9 @@ lux = 分解能 × ALS カウント
 I2C スキャンはアドレス順に出力されます（0x10 VEML7700 / 0x38 AHT21 / 0x53 ENS160 / 0x76 または 0x77 BMP280）。
 
 ## e-paper ディスプレイ表示
-画面2「Ambience」（`displayAmbience()`）に照度とホワイトチャネルを表示します（全 8 画面のうちの 1 つで、10 秒ごとに切り替わります）。
+画面12「Light」（`displayLight()`）に、照度を猫の目で表示します（明るいと瞳が縦に細く、暗いとまんまる。下に照度の数字）。見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
+
+画面2「Ambience」（`displayAmbience()`）には、照度とホワイトチャネルの生の値を表示します。どちらも 10 秒ごとに切り替わる画面の1つです。
 ```
 Ambience
 Lux:   19lx        # 照度（四捨五入、18.97 lux の例）

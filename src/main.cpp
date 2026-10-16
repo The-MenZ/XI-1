@@ -138,7 +138,7 @@ uint8_t pressure_history_count = 0;
 // 無効な画面はスキップして次の有効な画面を表示します
 // ============================================================================
 // 画面の番号は NVS に保存した screen_mask のビット位置なので、新しい画面は末尾に足す
-#define NUM_SCREENS 12
+#define NUM_SCREENS 13
 #define SCREEN_WIFI_QR 6
 #define SCREEN_SETTINGS_QR 8
 #define SCREEN_WEATHER 9
@@ -155,6 +155,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面9: Weather (天気。地域は設定ページで選ぶ)
   true,   // 画面10: Pressure (天気図風の H/L と等圧線)
   true,   // 画面11: Sound (レトロな VU メーター)
+  true,   // 画面12: Light (猫の目)
 };
 
 // 設定ページのチェックボックスに出す画面名
@@ -171,6 +172,7 @@ const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "Weather（天気）",
   "Pressure（気圧 H/L）",
   "Sound（騒音 VU メーター）",
+  "Light（照度 猫の目）",
 };
 
 uint16_t defaultScreenMask() {
@@ -836,6 +838,10 @@ void loop() {
         case 11:
           // Sound（レトロな VU メーター。針は補正後の騒音）
           displaySound(max9814_data, sensor_max9814_enabled);
+          break;
+        case 12:
+          // Light（猫の目。明るいと瞳が細く、暗いとまんまる）
+          displayLight(veml7700_data, sensor_veml7700_enabled);
           break;
         default:
           // 無効な画面モード（デフォルトケース）
