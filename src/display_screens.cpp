@@ -3,7 +3,6 @@
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeMonoBold24pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <qrcode.h>
 #include <U8g2_for_Adafruit_GFX.h>
@@ -218,29 +217,105 @@ void displayDateTime(bool isWiFiConnected, const String& dateTimeStr) {
 }
 
 // ============================================================================
-// 画面5: 月日表示（シンプル & 洒落たデザイン）
+// 画面5: 月日表示（4分割の大きな丸ゴシック風数字）
 // ============================================================================
+// 画面を 100×100 の4区画に分け、上段に月、下段に日を1桁ずつ描く（10月17日 → 1 0 / 1 7）
+// 数字はフォントを使わず、中心線（直線と楕円弧）を丸いペンでなぞって描く。
+// 線の太さが一定で端と継ぎ目が丸くなり、データも数百バイトで済む
+
+#define MONTHDAY_CELL 100     // 1桁の区画（px）
+#define MONTHDAY_DIGIT_W 84   // 数字の外形の幅（px）
+#define MONTHDAY_DIGIT_H 96   // 数字の外形の高さ（px）
+#define MONTHDAY_PEN_R 10     // ペンの半径（線の太さは 2r+1 = 21px）
+
+// 数字の中心線を 幅60 × 高さ80 の設計座標で表す（y は下向き）
+struct DigitStroke {
+  char kind;              // 'L' = 直線, 'A' = 楕円弧
+  int8_t p0, p1, p2, p3;  // 直線: 始点 x, y と終点 x, y / 弧: 中心 x, y と半径 x, y
+  int16_t a0, a1;         // 弧の開始角と終了角（度。0 = 右、90 = 下で、a0 → a1 と時計回りに進む）
+};
+
+#define STROKE_LINE(x0, y0, x1, y1) {'L', x0, y0, x1, y1, 0, 0}
+#define STROKE_ARC(cx, cy, rx, ry, a0, a1) {'A', cx, cy, rx, ry, a0, a1}
+
+static const DigitStroke DIGIT_0[] = {STROKE_ARC(30, 40, 30, 40, 0, 360)};
+static const DigitStroke DIGIT_1[] = {STROKE_LINE(35, 0, 35, 80), STROKE_LINE(35, 0, 13, 15)};
+static const DigitStroke DIGIT_2[] = {STROKE_ARC(30, 26, 28, 26, 195, 400), STROKE_LINE(51, 43, 0, 80), STROKE_LINE(0, 80, 60, 80)};
+static const DigitStroke DIGIT_3[] = {STROKE_ARC(30, 20, 26, 20, 200, 450), STROKE_ARC(30, 60, 30, 20, 270, 520), STROKE_LINE(20, 40, 30, 40)};
+static const DigitStroke DIGIT_4[] = {STROKE_LINE(46, 0, 0, 58), STROKE_LINE(0, 58, 60, 58), STROKE_LINE(46, 0, 46, 80)};
+static const DigitStroke DIGIT_5[] = {STROKE_LINE(56, 0, 10, 0), STROKE_LINE(10, 0, 10, 35), STROKE_ARC(30, 54, 30, 26, 228, 510)};
+static const DigitStroke DIGIT_6[] = {STROKE_ARC(30, 52, 30, 28, 0, 360), STROKE_ARC(46, 52, 46, 52, 180, 258)};
+static const DigitStroke DIGIT_7[] = {STROKE_LINE(0, 0, 60, 0), STROKE_LINE(60, 0, 22, 80)};
+static const DigitStroke DIGIT_8[] = {STROKE_ARC(30, 20, 25, 20, 0, 360), STROKE_ARC(30, 59, 30, 21, 0, 360)};
+static const DigitStroke DIGIT_9[] = {STROKE_ARC(30, 28, 30, 28, 0, 360), STROKE_ARC(14, 28, 46, 52, 0, 78)};
+
+struct DigitGlyph {
+  const DigitStroke* strokes;
+  uint8_t count;
+};
+
+#define DIGIT_GLYPH(strokes) {strokes, sizeof(strokes) / sizeof(strokes[0])}
+static const DigitGlyph DIGIT_GLYPHS[10] = {
+  DIGIT_GLYPH(DIGIT_0), DIGIT_GLYPH(DIGIT_1), DIGIT_GLYPH(DIGIT_2), DIGIT_GLYPH(DIGIT_3), DIGIT_GLYPH(DIGIT_4),
+  DIGIT_GLYPH(DIGIT_5), DIGIT_GLYPH(DIGIT_6), DIGIT_GLYPH(DIGIT_7), DIGIT_GLYPH(DIGIT_8), DIGIT_GLYPH(DIGIT_9),
+};
+
+// 半径 r の丸いペンで (x0, y0) → (x1, y1) をなぞる（両端に円、間を2つの三角形で埋める）
+static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r) {
+  float dx = x1 - x0, dy = y1 - y0;
+  float len = sqrtf(dx * dx + dy * dy);
+  if (len > 0.5f) {
+    // 線に垂直な長さ r のベクトル
+    float nx = -dy / len * r, ny = dx / len * r;
+    int16_t ax = lroundf(x0 + nx), ay = lroundf(y0 + ny);
+    int16_t bx = lroundf(x0 - nx), by = lroundf(y0 - ny);
+    int16_t cx = lroundf(x1 - nx), cy = lroundf(y1 - ny);
+    int16_t ex = lroundf(x1 + nx), ey = lroundf(y1 + ny);
+    display.fillTriangle(ax, ay, bx, by, cx, cy, GxEPD_BLACK);
+    display.fillTriangle(ax, ay, cx, cy, ex, ey, GxEPD_BLACK);
+  }
+  display.fillCircle(lroundf(x0), lroundf(y0), r, GxEPD_BLACK);
+  display.fillCircle(lroundf(x1), lroundf(y1), r, GxEPD_BLACK);
+}
+
+// 区画 (cellX, cellY) の中央に数字を1つ描く
+static void drawDigitInCell(int digit, int16_t cellX, int16_t cellY) {
+  const int16_t r = MONTHDAY_PEN_R;
+  // 設計座標 → 画面座標。外形が DIGIT_W × DIGIT_H になるよう、ペンの太さを除いた分に中心線を合わせる
+  float sx = (MONTHDAY_DIGIT_W - 2 * r - 1) / 60.0f;
+  float sy = (MONTHDAY_DIGIT_H - 2 * r - 1) / 80.0f;
+  float ox = cellX + (MONTHDAY_CELL - MONTHDAY_DIGIT_W) / 2.0f + r;
+  float oy = cellY + (MONTHDAY_CELL - MONTHDAY_DIGIT_H) / 2.0f + r;
+
+  const DigitGlyph& glyph = DIGIT_GLYPHS[digit];
+  for (uint8_t i = 0; i < glyph.count; i++) {
+    const DigitStroke& s = glyph.strokes[i];
+    if (s.kind == 'L') {
+      drawRoundLine(ox + s.p0 * sx, oy + s.p1 * sy, ox + s.p2 * sx, oy + s.p3 * sy, r);
+      continue;
+    }
+
+    // 楕円弧は約3pxごとの折れ線にする（継ぎ目もペンの円で丸くなる）
+    float cx = ox + s.p0 * sx, cy = oy + s.p1 * sy;
+    float rx = s.p2 * sx, ry = s.p3 * sy;
+    float a0 = s.a0 * DEG_TO_RAD, a1 = s.a1 * DEG_TO_RAD;
+    int n = max(2, (int)ceilf((a1 - a0) * max(rx, ry) / 3));
+    float px = cx + rx * cosf(a0), py = cy + ry * sinf(a0);
+    for (int k = 1; k <= n; k++) {
+      float a = a0 + (a1 - a0) * k / n;
+      float qx = cx + rx * cosf(a), qy = cy + ry * sinf(a);
+      drawRoundLine(px, py, qx, qy, r);
+      px = qx;
+      py = qy;
+    }
+  }
+}
+
 void displayMonthDay(int month, int day) {
-  display.setTextColor(GxEPD_BLACK);
-  // FreeMonoBold24pt7b: 等幅太字フォント（余白がぴったり）
-  display.setFont(&FreeMonoBold24pt7b);
-  display.setTextSize(2);
-  
-  // 月を2文字でゼロパディング（上半分にセンター）
-  String month_str = (month < 10 ? "0" : "") + String(month);
-  int16_t x_month = (display.width() - (month_str.length() * 60)) / 2;
-  display.setCursor(x_month, 85);
-  display.println(month_str);
-  
-  // 日を2文字でゼロパディング（下半分にセンター）
-  String day_str = (day < 10 ? "0" : "") + String(day);
-  int16_t x_day = (display.width() - (day_str.length() * 60)) / 2;
-  display.setCursor(x_day, 175);
-  display.println(day_str);
-  
-  // フォント設定をリセット（次の画面表示に影響しないように）
-  display.setTextSize(1);
-  display.setFont();
+  drawDigitInCell(month / 10, 0, 0);
+  drawDigitInCell(month % 10, MONTHDAY_CELL, 0);
+  drawDigitInCell(day / 10, 0, MONTHDAY_CELL);
+  drawDigitInCell(day % 10, MONTHDAY_CELL, MONTHDAY_CELL);
 }
 
 // ============================================================================

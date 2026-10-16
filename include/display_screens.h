@@ -43,7 +43,7 @@ void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled);
 // 画面4: 日時表示（NTP同期時刻）
 void displayDateTime(bool isWiFiConnected, const String& dateTimeStr);
 
-// 画面5: 月日表示（シンプル & 洒落たデザイン）
+// 画面5: 月日表示（画面を4分割し、月日の4桁を大きな丸ゴシック風の数字で描く）
 void displayMonthDay(int month, int day);
 
 // 画面6: WiFi QRコード表示（中央に WiFi マーク。パスワードが空なら暗号化なしの WiFi として出す）
