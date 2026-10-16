@@ -60,7 +60,7 @@ void displayPressure(                                                         //
 | `BMP280Data` | `temperature`（°C）, `pressure`（hPa、設置場所の気圧）, `sea_level_pressure`（hPa、設定ページの標高で海面の高さに換算した気圧）, `altitude`（m） |
 | `VEML7700Data` | `lux`, `white`, `als`（ALS 生データ） |
 | `MAX9814Data` | `raw_value`, `voltage`, `peak_to_peak`, `rms_voltage`, `db_level`（中央値フィルタ済）, `db_level_raw` |
-| `MICS5524Data` | `raw_value`, `voltage`, `resistance`, `rs_ro_ratio`, `ppm_equivalent`, `heater_enabled`, `calibrated` |
+| `MICS5524Data` | `raw_value`, `voltage`, `resistance`, `rs_ro_ratio`, `ppm_equivalent`, `heater_enabled`, `calibrated`, `rs_ro_min`（測れる Rs/Ro の下限）, `warmup_progress`（ウォームアップの進み具合 0〜1） |
 
 AHT21 の補正量は `main.cpp` の `AHT21_TEMP_OFFSET`（10 °C）で、`aht21.setTemperatureOffset()` で設定します。湿度は補正後の温度に合わせて換算し直されます。
 

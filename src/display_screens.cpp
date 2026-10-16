@@ -166,31 +166,267 @@ void displayAmbience(
 }
 
 // ============================================================================
-// 画面3: Gas Sensor (ガスセンサー)
+// 画面3: Gas Sensor（炭鉱のカナリアと RPG 風の HP ゲージ）
 // ============================================================================
+// 昔の炭鉱で、有毒ガスに気づくために連れて入ったカナリアに見立てる。
+// 上の枠の HP は Rs/Ro から計算し、HP が減るほどカナリアが弱る（歌う → しょんぼり → ひっくり返る）。
+// ウォームアップ中（起動から3分間）は温められている卵で、ひびの長さが進み具合。
+// 絵は画像を持たずに、円・楕円・三角と丸いペンの線で描く
+
+#define CANARY_HP_SING 70    // HP がこれ以上なら歌う
+#define CANARY_HP_FAINT 30   // HP がこれ未満ならひっくり返る（その間はしょんぼり）
+#define CANARY_OUTLINE 3     // 体や頭の輪郭の太さ（px）
+#define CANARY_PEN_R 1       // 線を引くペンの半径（線の太さは 2r+1 = 3px）
+#define HP_SEGMENTS 10       // HP ゲージのマスの数（1マス = HP 10）
+
+// 画面5 の月日表示で定義（丸いペンで線を引く）
+static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r);
+
+// 楕円を塗る。上半分と下半分で縦の半径を変えられる（卵の形に使う）
+static void fillEllipse(int16_t cx, int16_t cy, int16_t rx, int16_t ry_top, int16_t ry_bottom, uint16_t color) {
+  for (int16_t dy = -ry_top; dy <= ry_bottom; dy++) {
+    float ry = dy < 0 ? ry_top : ry_bottom;
+    float t = ry > 0 ? dy / ry : 0;
+    int16_t dx = lroundf(rx * sqrtf(1 - t * t));
+    display.drawFastHLine(cx - dx, cy + dy, 2 * dx + 1, color);
+  }
+}
+
+// 黒い輪郭つきの白い楕円（半径は白い部分の大きさ）
+static void drawOutlinedEllipse(int16_t cx, int16_t cy, int16_t rx, int16_t ry_top, int16_t ry_bottom) {
+  fillEllipse(cx, cy, rx + CANARY_OUTLINE, ry_top + CANARY_OUTLINE, ry_bottom + CANARY_OUTLINE, GxEPD_BLACK);
+  fillEllipse(cx, cy, rx, ry_top, ry_bottom, GxEPD_WHITE);
+}
+
+// 黒い輪郭つきの白い円（半径は白い部分の大きさ）
+static void drawOutlinedCircle(int16_t cx, int16_t cy, int16_t r) {
+  display.fillCircle(cx, cy, r + CANARY_OUTLINE, GxEPD_BLACK);
+  display.fillCircle(cx, cy, r, GxEPD_WHITE);
+}
+
+// (x0, y0) から (x2, y2) への2次ベジェ曲線（制御点 (x1, y1)）を丸いペンでなぞる
+static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2) {
+  const int n = 8;
+  float px = x0, py = y0;
+  for (int k = 1; k <= n; k++) {
+    float t = (float)k / n;
+    float u = 1 - t;
+    float qx = u * u * x0 + 2 * u * t * x1 + t * t * x2;
+    float qy = u * u * y0 + 2 * u * t * y1 + t * t * y2;
+    drawRoundLine(px, py, qx, qy, CANARY_PEN_R);
+    px = qx;
+    py = qy;
+  }
+}
+
+// においや熱の、揺れながら上へのびる線（(x, y) は下の端。waves は揺れの数で、1つ 9px）
+static void drawWavyLine(int16_t x, int16_t y, int waves) {
+  for (int i = 0; i < waves; i++) {
+    int16_t y0 = y - i * 9;
+    drawCurve(x, y0, x + (i % 2 ? -6 : 6), y0 - 4, x, y0 - 9);
+  }
+}
+
+// 音符（(x, y) は玉の中心）
+static void drawNote(int16_t x, int16_t y) {
+  fillEllipse(x, y, 5, 3, 3, GxEPD_BLACK);
+  drawRoundLine(x + 4, y - 1, x + 4, y - 15, CANARY_PEN_R);
+  drawCurve(x + 4, y - 15, x + 9, y - 12, x + 11, y - 7);
+}
+
+// 冷や汗（(x, y) はしずくの先。黒い縁の白いしずく）
+static void drawSweatDrop(int16_t x, int16_t y) {
+  display.fillTriangle(x, y, x - 5, y + 9, x + 5, y + 9, GxEPD_BLACK);
+  display.fillCircle(x, y + 9, 5, GxEPD_BLACK);
+  display.fillTriangle(x, y + 4, x - 3, y + 9, x + 3, y + 9, GxEPD_WHITE);
+  display.fillCircle(x, y + 9, 3, GxEPD_WHITE);
+}
+
+// しっぽ（輪郭つきの白い四角形。corners は4つの角の x, y）
+static void drawTail(const int16_t corners[8]) {
+  const int16_t* p = corners;
+  display.fillTriangle(p[0], p[1], p[2], p[3], p[4], p[5], GxEPD_WHITE);
+  display.fillTriangle(p[0], p[1], p[4], p[5], p[6], p[7], GxEPD_WHITE);
+  for (int i = 0; i < 4; i++) {
+    int j = (i + 1) % 4;
+    drawRoundLine(p[2 * i], p[2 * i + 1], p[2 * j], p[2 * j + 1], CANARY_PEN_R);
+  }
+}
+
+// ブランコ（2本のひもと止まり木）。ひもは HP の枠の下から垂らす
+static void drawSwing() {
+  display.fillRect(71, 46, 2, 107, GxEPD_BLACK);
+  display.fillRect(128, 46, 2, 107, GxEPD_BLACK);
+  display.fillRoundRect(59, 153, 82, 7, 3, GxEPD_BLACK);
+}
+
+static const int16_t TAIL_SITTING[8] = {84, 134, 58, 143, 64, 152, 87, 143};
+static const int16_t TAIL_FALLEN[8] = {110, 173, 122, 165, 124, 176, 112, 180};
+
+// HP が多い: ブランコに乗って、くちばしを開けて歌う
+static void drawCanarySinging() {
+  drawSwing();
+  drawTail(TAIL_SITTING);
+  drawOutlinedEllipse(100, 135, 23, 17, 17);  // 体
+  drawCurve(84, 131, 97, 150, 116, 134);      // 翼
+  drawOutlinedCircle(115, 110, 14);           // 頭
+  drawCurve(109, 97, 109, 88, 116, 85);       // 頭の羽
+  drawCurve(114, 96, 118, 88, 125, 88);
+  display.fillCircle(120, 107, 3, GxEPD_BLACK);                     // 目
+  display.fillTriangle(129, 104, 143, 106, 130, 110, GxEPD_BLACK);  // くちばし（上）
+  display.fillTriangle(130, 113, 141, 120, 129, 117, GxEPD_BLACK);  // くちばし（下）
+  drawNote(145, 89);
+  drawNote(158, 72);
+}
+
+// HP が半分くらい: うなだれて冷や汗。まわりににおいの線
+static void drawCanaryDrooping() {
+  drawSwing();
+  drawTail(TAIL_SITTING);
+  drawOutlinedEllipse(100, 137, 23, 17, 17);  // 体
+  drawCurve(84, 133, 97, 152, 117, 136);      // 翼
+  drawOutlinedCircle(116, 120, 14);           // 頭（下がっている）
+  drawCurve(112, 106, 110, 99, 104, 97);      // しおれた頭の羽
+  // 半分閉じた目（まぶたの線の下に黒目の下半分）
+  display.fillCircle(122, 118, 3, GxEPD_BLACK);
+  display.fillRect(118, 114, 9, 4, GxEPD_WHITE);
+  drawRoundLine(118, 117, 126, 117, CANARY_PEN_R);
+  display.fillTriangle(130, 120, 141, 127, 129, 129, GxEPD_BLACK);  // 閉じたくちばし
+  drawSweatDrop(90, 100);
+  drawWavyLine(40, 197, 4);
+  drawWavyLine(52, 189, 3);
+  drawWavyLine(152, 140, 3);
+}
+
+// HP が少ない: 止まり木から落ちて、床でひっくり返る（× 目で足が上）。ブランコだけが揺れている
+static void drawCanaryFainted() {
+  display.drawLine(67, 46, 62, 96, GxEPD_BLACK);  // 傾いたブランコのひも（2px）
+  display.drawLine(68, 46, 63, 96, GxEPD_BLACK);
+  display.drawLine(124, 46, 118, 102, GxEPD_BLACK);
+  display.drawLine(125, 46, 119, 102, GxEPD_BLACK);
+  drawRoundLine(50, 96, 130, 104, 3);    // 止まり木
+  drawCurve(43, 83, 37, 93, 43, 104);    // 揺れの線
+  drawCurve(161, 92, 167, 102, 161, 113);
+  drawRoundLine(25, 191, 121, 191, CANARY_PEN_R);  // 床
+
+  drawTail(TAIL_FALLEN);
+  drawOutlinedEllipse(90, 176, 21, 12, 12);  // 体
+  drawCurve(74, 179, 88, 167, 103, 177);     // 翼
+  // 上を向いた足（足首から3本の指のうち2本だけ描く）
+  for (int16_t x = 85; x <= 95; x += 10) {
+    drawRoundLine(x, 162, x, 149, CANARY_PEN_R);
+    drawRoundLine(x - 5, 146, x, 149, CANARY_PEN_R);
+    drawRoundLine(x, 149, x + 5, 146, CANARY_PEN_R);
+  }
+  drawOutlinedCircle(64, 177, 11);  // 頭
+  drawRoundLine(57, 172, 63, 178, CANARY_PEN_R);  // × 目
+  drawRoundLine(63, 172, 57, 178, CANARY_PEN_R);
+  display.fillTriangle(53, 180, 43, 177, 51, 186, GxEPD_BLACK);  // くちばし
+  drawWavyLine(38, 155, 3);
+  drawWavyLine(142, 159, 3);
+  drawWavyLine(157, 155, 2);
+}
+
+// ウォームアップ中: ヒーターで温められている卵。ひびが左からのびて、のび切ると（3分で）かえる
+static const int16_t EGG_CRACK[][2] = {
+  {64, 128}, {74, 120}, {83, 132}, {93, 119}, {103, 132}, {112, 120}, {122, 132}, {131, 122}, {136, 127},
+};
+#define EGG_CRACK_SEGMENTS (sizeof(EGG_CRACK) / sizeof(EGG_CRACK[0]) - 1)
+
+static void drawEgg(float progress) {
+  drawWavyLine(70, 76, 2);  // 熱の線
+  drawWavyLine(100, 70, 2);
+  drawWavyLine(130, 76, 2);
+  drawOutlinedEllipse(100, 132, 35, 49, 37);  // 上が細い卵の形
+  drawRoundLine(52, 175, 148, 175, CANARY_PEN_R);  // 床
+
+  float length = progress * EGG_CRACK_SEGMENTS;
+  for (int i = 0; i < (int)EGG_CRACK_SEGMENTS && length > i; i++) {
+    float f = min(1.0f, length - i);
+    float x0 = EGG_CRACK[i][0], y0 = EGG_CRACK[i][1];
+    drawRoundLine(x0, y0, x0 + (EGG_CRACK[i + 1][0] - x0) * f, y0 + (EGG_CRACK[i + 1][1] - y0) * f, CANARY_PEN_R);
+  }
+}
+
+// RPG 風のウィンドウ（太い線と細い線の二重の枠）
+static void drawHPFrame() {
+  for (int i = 0; i < 3; i++) {
+    display.drawRect(4 + i, 4 + i, 192 - 2 * i, 42 - 2 * i, GxEPD_BLACK);
+  }
+  display.drawRect(9, 9, 182, 32, GxEPD_BLACK);
+}
+
+// 枠の中に「HP」、10マスのゲージ、HP の数字（右寄せ）を並べる
+// 文字は全画面共通のフォント FreeMonoBold12pt7b（main.cpp で設定済み）
+static void drawHPWindow(int hp) {
+  drawHPFrame();
+  display.setCursor(13, 32);
+  display.print("HP");
+
+  int filled = (hp + 9) / 10;  // HP が 1 でも残っていれば1マス
+  for (int i = 0; i < HP_SEGMENTS; i++) {
+    int16_t x = 44 + i * 10;
+    if (i < filled) {
+      display.fillRect(x, 18, 8, 15, GxEPD_BLACK);
+    } else {
+      display.drawRect(x, 18, 8, 15, GxEPD_BLACK);
+    }
+  }
+
+  char text[4];
+  snprintf(text, sizeof(text), "%d", hp);
+  int16_t bx, by;
+  uint16_t bw, bh;
+  display.getTextBounds(text, 0, 0, &bx, &by, &bw, &bh);
+  display.setCursor(186 - bx - bw, 32);
+  display.print(text);
+}
+
+// HP（0〜100）。Rs/Ro が 1（キャリブレーションしたときの空気）で 100、
+// 測れる下限（出力が ADC の上限に達したとき）で 0。基準よりきれいな空気でも 100 で止める
+static int canaryHP(const MICS5524Data& data) {
+  float range = 1.0f - data.rs_ro_min;
+  if (range < 0.01f) {
+    return data.rs_ro_ratio >= 1.0f ? 100 : 0;
+  }
+  long hp = lroundf((data.rs_ro_ratio - data.rs_ro_min) / range * 100);
+  return constrain(hp, 0, 100);
+}
+
 void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled) {
-  // タイトル
-  display.setCursor(2, 24);
-  display.println("Gas Sensor");
-  
-  if (sensor_enabled && !mics5524_data.calibrated) {
-    // ヒーターのウォームアップ中（起動から3分間）
-    display.setCursor(2, 120);
-    display.println("Warming up");
-  } else if (sensor_enabled) {
-    // Rs/Ro比率（シンプル表示）
-    display.setCursor(2, 120);
-    display.print("Rs/Ro: ");
-    display.print(mics5524_data.rs_ro_ratio, 2);
-    display.println("");
-  } else {
+  if (!sensor_enabled) {
+    display.setCursor(2, 24);
+    display.println("Gas Sensor");
     display.setCursor(2, 56);
     display.println("MICS5524");
     display.setCursor(2, 88);
     display.println("Not");
     display.setCursor(2, 120);
     display.println("Connected");
+    return;
   }
+
+  if (!mics5524_data.calibrated) {
+    // ヒーターのウォームアップ中（起動から3分間）
+    drawEgg(mics5524_data.warmup_progress);
+    drawHPFrame();
+    int16_t bx, by;
+    uint16_t bw, bh;
+    display.getTextBounds("WARMING UP", 0, 0, &bx, &by, &bw, &bh);
+    display.setCursor(100 - bx - bw / 2, 32);
+    display.print("WARMING UP");
+    return;
+  }
+
+  int hp = canaryHP(mics5524_data);
+  if (hp >= CANARY_HP_SING) {
+    drawCanarySinging();
+  } else if (hp >= CANARY_HP_FAINT) {
+    drawCanaryDrooping();
+  } else {
+    drawCanaryFainted();
+  }
+  drawHPWindow(hp);
 }
 
 // ============================================================================

@@ -17,6 +17,8 @@ struct MICS5524Data {
     float ppm_equivalent;    // ppm equivalent (CO reference)
     bool heater_enabled;     // Heater status
     bool calibrated;         // Ro calibrated (false while warming up)
+    float rs_ro_min;         // 測れる Rs/Ro の下限（出力が ADC の上限電圧のとき。キャリブレーション前は 0）
+    float warmup_progress;   // ヒーターのウォームアップの進み具合（0〜1。1 で完了）
 };
 
 class CustomMICS5524 {
