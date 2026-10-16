@@ -35,7 +35,7 @@ void displayAmbience(                                                         //
   const MAX9814Data& max9814_data, bool max9814_enabled
 );
 void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled);// 画面3
-void displayDateTime(bool isWiFiConnected, const String& dateTimeStr);        // 画面4
+void displayTime(int hour, int minute, bool synced);                          // 画面4
 void displayMonthDay(int month, int day);                                     // 画面5
 void displayWiFiQR(const String& ssid, const String& password);               // 画面6
 void displayClimateModern(                                                    // 画面7
@@ -201,10 +201,14 @@ switch(display_mode) {
     displayGasSensor(mics5524_data, sensor_mics5524_enabled);
     break;
     
-  case 4:
-    // 日時表示画面 - WiFi状態（関数呼び出し）と現在時刻を渡す
-    displayDateTime(isWiFiConnected(), getCurrentDateTime());
+  case 4: {
+    // 時刻画面（パタパタ時計）- 現在時刻から時と分を取り出し、NTP で時刻が合ったかと一緒に渡す
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    displayTime(timeinfo.tm_hour, timeinfo.tm_min, isTimeSynced());
     break;
+  }
 
   case 5: {
     // 月日表示画面 - 現在時刻から月と日を取り出して渡す

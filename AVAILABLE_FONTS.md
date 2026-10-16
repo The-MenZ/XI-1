@@ -14,16 +14,15 @@
 | フォント | 種類 | 使用箇所 |
 |---------|------|---------|
 | `FreeMonoBold12pt7b` | Adafruit GFX | 全画面共通の既定フォント（`main.cpp` の `loop()` で設定）。Air Quality / Climate / Ambience / Gas Sensor 画面、Sound・Light の未接続時の表示、起動時のテスト表示（`main.cpp` の `setup()`） |
-| `FreeSans12pt7b` | Adafruit GFX | Date & Time のタイトル、Settings QR・Weather の未接続／未取得時の表示、Sound の「dB」、Light の「lx」 |
-| `FreeSans18pt7b` | Adafruit GFX | Date & Time の日時、Sound の補正後の数字 |
-| `FreeSans9pt7b` | Adafruit GFX | Date & Time の WiFi 状態、WiFi QR のエラー表示、Weather の未取得時の表示、Pressure の等圧線の気圧 |
+| `FreeSans12pt7b` | Adafruit GFX | Settings QR・Weather の未接続／未取得時の表示、Sound の「dB」、Light の「lx」 |
+| `FreeSans18pt7b` | Adafruit GFX | Sound の補正後の数字 |
+| `FreeSans9pt7b` | Adafruit GFX | WiFi QR のエラー表示、Weather の未取得時の表示、Pressure の等圧線の気圧 |
 | `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度、Weather の今の気温（大きな数字） |
 | `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度、Pressure の気圧と3時間の変化、Sound の文字盤の「dB」 |
 | `u8g2_font_helvB12_tf` | U8g2 | Weather の天気の名前・°C・日付・最高/最低気温 |
 | `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY）、Weather の取得時刻・降水確率、Pressure の「3h」、Sound の目盛りの数字 |
 
-※ Month Day 画面の数字はフォントを使わず、`display_screens.cpp` の中で直線と楕円弧を丸いペンでなぞって描いています（`MONTHDAY_SCREEN.md` 参照）。Air Quality の AQI と Light の照度の数字も、同じ描き方です。
-※ Date & Time 画面は既定で無効（`SCREEN_DEFAULT_ENABLED[4] = false`。設定ページで ON にできる）です。
+※ Month Day 画面の数字はフォントを使わず、`display_screens.cpp` の中で直線と楕円弧を丸いペンでなぞって描いています（`MONTHDAY_SCREEN.md` 参照）。Air Quality の AQI、Time のパタパタ時計、Light の照度の数字も、同じ描き方です。
 ※ `main.cpp` は `FreeMonoBold12pt7b` だけを読み込み、ほかのフォントは `display_screens.cpp` で読み込みます（下の注意事項を参照）。
 
 ---
