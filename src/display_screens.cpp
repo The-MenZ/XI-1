@@ -6,6 +6,7 @@
 #include <Fonts/FreeMonoBold24pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <qrcode.h>
+#include <U8g2_for_Adafruit_GFX.h>
 
 // 関数プロトタイプ（main.cppで定義）
 extern String getAQIStatusEnglish(uint8_t aqi);
@@ -340,4 +341,250 @@ void displayWiFiQR(const String& ssid, const String& password) {
   }
   
   Serial.printf("DEBUG: black_pixels=%d (drawn with fillRect)\n", black_pixels);
+}
+
+// ============================================================================
+// 画面8: Climate Modern (温度/湿度モダンデザイン)
+// ============================================================================
+void displayClimateModern(
+  const AHT21Data& aht21_data, bool aht21_enabled,
+  const BMP280Data& bmp280_data, bool bmp280_enabled,
+  const float* temp_history, const float* humid_history, 
+  int history_count, int history_index
+) {
+  // U8g2フォント用のオブジェクト作成
+  static U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
+  static bool u8g2_initialized = false;
+  
+  if (!u8g2_initialized) {
+    u8g2Fonts.begin(display);
+    u8g2_initialized = true;
+  }
+  
+  // センサーデータチェック
+  if (!aht21_enabled && !bmp280_enabled) {
+    display.setCursor(2, 56);
+    display.println("No");
+    display.setCursor(2, 88);
+    display.println("Climate");
+    display.setCursor(2, 120);
+    display.println("Sensors");
+    return;
+  }
+  
+  // 温度と湿度の値を取得
+  float temperature = 0.0;
+  int humidity = 0;
+  
+  if (aht21_enabled) {
+    // 自己発熱補正済みの値（補正量は main.cpp の AHT21_TEMP_OFFSET）
+    temperature = aht21_data.temperature;
+    humidity = (int)aht21_data.humidity;
+  } else if (bmp280_enabled) {
+    temperature = bmp280_data.temperature;
+  }
+  
+  // 画面中心座標
+  int16_t centerX = 100;
+  int16_t centerY = 75;
+  
+  // ===== 円形ゲージ（アーチ）描画 =====
+  int16_t outerRadius = 70;
+  int16_t innerRadius = 60;
+  int16_t humidRadius = 60;  // 温度ゲージの内側と同じ（隙間なし）
+  int16_t humidInnerRadius = 50;
+  
+  float tempAngle = (temperature / 50.0) * 270.0;  // 0-50°Cを270度にマップ
+  float humidAngle = (humidity / 100.0) * 270.0;  // 0-100%を270度にマップ
+  
+  // 範囲制限
+  if (tempAngle < 0) tempAngle = 0;
+  if (tempAngle > 270) tempAngle = 270;
+  if (humidAngle < 0) humidAngle = 0;
+  if (humidAngle > 270) humidAngle = 270;
+  
+  // 外側の円弧（温度ゲージ背景・枠線のみ）
+  for (int angle = 135; angle <= 405; angle += 2) {
+    float rad = angle * PI / 180.0;
+    // 外周
+    int16_t x_outer = centerX + cos(rad) * outerRadius;
+    int16_t y_outer = centerY + sin(rad) * outerRadius;
+    display.drawPixel(x_outer, y_outer, GxEPD_BLACK);
+    // 内周
+    int16_t x_inner = centerX + cos(rad) * innerRadius;
+    int16_t y_inner = centerY + sin(rad) * innerRadius;
+    display.drawPixel(x_inner, y_inner, GxEPD_BLACK);
+  }
+  
+  // 温度ゲージ（黒ベタ・完全な塗りつぶし）
+  for (float angle = 135.0; angle <= 135.0 + tempAngle; angle += 0.5) {
+    float rad = angle * PI / 180.0;
+    int16_t x1 = centerX + cos(rad) * innerRadius;
+    int16_t y1 = centerY + sin(rad) * innerRadius;
+    int16_t x2 = centerX + cos(rad) * outerRadius;
+    int16_t y2 = centerY + sin(rad) * outerRadius;
+    display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
+    // さらに隣接する線も描画して完全に埋める
+    display.drawLine(x1+1, y1, x2+1, y2, GxEPD_BLACK);
+  }
+  
+  // 内側の円弧（湿度ゲージ背景・枠線のみ）
+  for (int angle = 135; angle <= 405; angle += 2) {
+    float rad = angle * PI / 180.0;
+    // 外周
+    int16_t x_outer = centerX + cos(rad) * humidRadius;
+    int16_t y_outer = centerY + sin(rad) * humidRadius;
+    display.drawPixel(x_outer, y_outer, GxEPD_BLACK);
+    // 内周
+    int16_t x_inner = centerX + cos(rad) * humidInnerRadius;
+    int16_t y_inner = centerY + sin(rad) * humidInnerRadius;
+    display.drawPixel(x_inner, y_inner, GxEPD_BLACK);
+  }
+  
+  // 湿度ゲージ（黒ベタ・完全な塗りつぶし）
+  if (aht21_enabled) {
+    for (float angle = 135.0; angle <= 135.0 + humidAngle; angle += 0.5) {
+      float rad = angle * PI / 180.0;
+      int16_t x1 = centerX + cos(rad) * humidInnerRadius;
+      int16_t y1 = centerY + sin(rad) * humidInnerRadius;
+      int16_t x2 = centerX + cos(rad) * humidRadius;
+      int16_t y2 = centerY + sin(rad) * humidRadius;
+      display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
+      // さらに隣接する線も描画して完全に埋める
+      display.drawLine(x1+1, y1, x2+1, y2, GxEPD_BLACK);
+    }
+  }
+  
+  // ===== 中央の大きな温度表示 =====
+  u8g2Fonts.setFontMode(0);
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
+  u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
+  
+  u8g2Fonts.setFont(u8g2_font_logisoso42_tn);  // 大きな数字フォント
+  
+  // 温度を整数で表示（小数点なし）
+  u8g2Fonts.setCursor(73, 90);
+  u8g2Fonts.print((int)temperature);
+  
+  // 湿度を右側に表示
+  if (aht21_enabled) {
+    u8g2Fonts.setFont(u8g2_font_helvB18_tf);
+    u8g2Fonts.setCursor(80, 120);
+    u8g2Fonts.print(humidity);
+    u8g2Fonts.print("%");
+  }
+
+  // ===== 下部：過去24時間のグラフ（実データ） =====
+  int16_t graphY = 135;
+  int16_t graphHeight = 25;
+  int16_t graphWidth = 180;
+  int16_t graphX = 10;
+  
+  // ========== 温度グラフ ==========
+  // "TEMP" ラベル（常に表示）
+  u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+  u8g2Fonts.setCursor(graphX, graphY - 5);
+  u8g2Fonts.print("TEMP");
+  
+  // グリッド線（常に表示）
+  for (int i = 0; i <= 2; i++) {
+    int16_t y = graphY + i * (graphHeight / 2);
+    for (int x = graphX; x < graphX + graphWidth; x += 4) {
+      display.drawPixel(x, y, GxEPD_BLACK);
+    }
+  }
+  
+  if (history_count >= 2) {  // データがある場合のみ折れ線を描画
+    
+    // 温度の最小・最大を計算（動的範囲）
+    float temp_min = temp_history[0];
+    float temp_max = temp_history[0];
+    for (int i = 0; i < history_count; i++) {
+      if (temp_history[i] < temp_min) temp_min = temp_history[i];
+      if (temp_history[i] > temp_max) temp_max = temp_history[i];
+    }
+    
+    // グラフ範囲に±2°Cの余白を追加
+    float graph_temp_min = temp_min - 2.0;
+    float graph_temp_max = temp_max + 2.0;
+    
+    // 温度変化がほとんどない場合の対処
+    if (graph_temp_max - graph_temp_min < 5.0) {
+      float temp_avg = (temp_min + temp_max) / 2.0;
+      graph_temp_min = temp_avg - 5.0;
+      graph_temp_max = temp_avg + 5.0;
+    }
+    
+    // 0°Cラインを強調表示（範囲内にある場合）
+    if (graph_temp_min <= 0.0 && graph_temp_max >= 0.0) {
+      // 0°CのY座標を計算（mapの代わりに手動計算）
+      float normalized = (0.0 - graph_temp_min) / (graph_temp_max - graph_temp_min);
+      int16_t zero_y = graphY + graphHeight - (int16_t)(normalized * graphHeight);
+      
+      // 黒実線（太め）で描画
+      display.drawLine(graphX, zero_y, graphX + graphWidth, zero_y, GxEPD_BLACK);
+      display.drawLine(graphX, zero_y+1, graphX + graphWidth, zero_y+1, GxEPD_BLACK);
+    }
+    
+    // 温度グラフを描画
+    for (int i = 0; i < history_count - 1; i++) {
+      // 古い順に描画（history_indexから開始して円環状にアクセス）
+      int idx1 = (history_index - history_count + i + 144) % 144;
+      int idx2 = (history_index - history_count + i + 1 + 144) % 144;
+      
+      float t1 = temp_history[idx1];
+      float t2 = temp_history[idx2];
+      
+      // X座標（時間軸）
+      int16_t x1 = graphX + (i * graphWidth) / (history_count - 1);
+      int16_t x2 = graphX + ((i + 1) * graphWidth) / (history_count - 1);
+      
+      // Y座標（温度軸）- 上下反転に注意
+      float norm1 = (t1 - graph_temp_min) / (graph_temp_max - graph_temp_min);
+      float norm2 = (t2 - graph_temp_min) / (graph_temp_max - graph_temp_min);
+      int16_t y1 = graphY + graphHeight - (int16_t)(norm1 * graphHeight);
+      int16_t y2 = graphY + graphHeight - (int16_t)(norm2 * graphHeight);
+      
+      display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
+    }
+  }
+  
+  // ========== 湿度グラフ ==========
+  if (aht21_enabled) {
+    graphY = 175;
+    
+    // "HUMIDITY" ラベル（常に表示）
+    u8g2Fonts.setFont(u8g2_font_helvR08_tf);
+    u8g2Fonts.setCursor(graphX, graphY - 5);
+    u8g2Fonts.print("HUMIDITY");
+    
+    // グリッド線（常に表示）
+    for (int i = 0; i <= 2; i++) {
+      int16_t y = graphY + i * (graphHeight / 2);
+      for (int x = graphX; x < graphX + graphWidth; x += 4) {
+        display.drawPixel(x, y, GxEPD_BLACK);
+      }
+    }
+    
+    // データがある場合のみ湿度グラフを描画
+    if (history_count >= 2) {
+      for (int i = 0; i < history_count - 1; i++) {
+        int idx1 = (history_index - history_count + i + 144) % 144;
+        int idx2 = (history_index - history_count + i + 1 + 144) % 144;
+        
+        float h1 = humid_history[idx1];
+        float h2 = humid_history[idx2];
+        
+        // X座標
+        int16_t x1 = graphX + (i * graphWidth) / (history_count - 1);
+        int16_t x2 = graphX + ((i + 1) * graphWidth) / (history_count - 1);
+        
+        // Y座標（0-100%固定）
+        int16_t y1 = graphY + graphHeight - (int16_t)((h1 / 100.0) * graphHeight);
+        int16_t y2 = graphY + graphHeight - (int16_t)((h2 / 100.0) * graphHeight);
+        
+        display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
+      }
+    }
+  }
 }

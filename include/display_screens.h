@@ -44,4 +44,12 @@ void displayMonthDay(int month, int day);
 // 画面7: WiFi QRコード表示
 void displayWiFiQR(const String& ssid, const String& password);
 
+// 画面8: Climate Modern (温度/湿度モダンデザイン)
+void displayClimateModern(
+  const AHT21Data& aht21_data, bool aht21_enabled,
+  const BMP280Data& bmp280_data, bool bmp280_enabled,
+  const float* temp_history, const float* humid_history, 
+  int history_count, int history_index
+);
+
 #endif // DISPLAY_SCREENS_H

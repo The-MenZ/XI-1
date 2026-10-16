@@ -112,20 +112,32 @@ bool sensor_max9814_enabled = false;
 bool sensor_mics5524_enabled = false;
 
 // ============================================================================
+// データ履歴管理（過去24時間分）
+// ============================================================================
+#define HISTORY_SIZE 144  // 24時間 ÷ 10分 = 144データポイント
+float temp_history[HISTORY_SIZE];
+float humid_history[HISTORY_SIZE];
+int history_index = 0;
+int history_count = 0;  // 実際に保存されているデータ数（起動直後は0から増える）
+unsigned long last_history_save = 0;
+const unsigned long HISTORY_INTERVAL = 10 * 60 * 1000;  // 10分（ミリ秒）
+
+// ============================================================================
 // 画面表示の有効/無効設定
 // ============================================================================
 // 各画面の有効/無効をfalseに変更してコメントアウトするだけで、
 // その画面をスキップして次の有効な画面を表示します
 // ============================================================================
-#define NUM_SCREENS 7
+#define NUM_SCREENS 8
 const bool SCREEN_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
   true,   // 画面2: Ambience (視聴覚環境)
   true,   // 画面3: Gas Sensor (ガスセンサー)
-  false,   // 画面4: Date & Time (日時表示)
+  false,  // 画面4: Date & Time (日時表示)
   true,   // 画面5: Month Day (月日表示)
   true,   // 画面6: WiFi QR Code (WiFi QR)
+  true,   // 画面7: Climate Modern (温度/湿度モダンデザイン)
 };
 
 // 有効な画面数を計算
@@ -360,6 +372,39 @@ void setup() {
   Serial.println("\n📺 ディスプレイ:");
   Serial.printf("   ✅ e-Paper: %d × %d px\n", display.width(), display.height());
   
+  // ===================================================================
+  // データ履歴の初期化（起動時のセンサー値で埋める）
+  // ===================================================================
+  Serial.println("\n📊 データ履歴を初期化中...");
+  float init_temp = 20.0;  // デフォルト値
+  float init_humid = 50.0; // デフォルト値
+  
+  // センサーから初期値を取得
+  if (sensor_aht21_enabled) {
+    AHT21Data init_data = aht21.read();
+    init_temp = init_data.temperature;  // 自己発熱補正済み
+    init_humid = init_data.humidity;
+    Serial.printf("   ✅ AHT21から初期値取得: 温度=%.1f°C, 湿度=%.0f%%\n", init_temp, init_humid);
+  } else if (sensor_bmp280_enabled) {
+    BMP280Data init_data = bmp280.read();
+    init_temp = init_data.temperature;
+    init_humid = 0.0;  // BMP280には湿度センサーなし
+    Serial.printf("   ✅ BMP280から初期値取得: 温度=%.1f°C\n", init_temp);
+  } else {
+    Serial.println("   ⚠️  センサーなし、デフォルト値使用");
+  }
+  
+  // 全履歴を初期値で埋める
+  for (int i = 0; i < HISTORY_SIZE; i++) {
+    temp_history[i] = init_temp;
+    humid_history[i] = init_humid;
+  }
+  history_count = HISTORY_SIZE;  // 履歴を満タンに
+  history_index = 0;
+  last_history_save = millis();  // 初回保存時刻を記録
+  
+  Serial.printf("   ✅ %d個のデータポイントを初期化完了\n", HISTORY_SIZE);
+  
   Serial.println("\n=================================================================");
   Serial.println("  準備完了！ loop開始\n");
   Serial.println("=================================================================\n");
@@ -402,6 +447,29 @@ void loop() {
         mics5524.calibrate();
       }
       mics5524_data = mics5524.read();
+    }
+    
+    // ========================================================================
+    // データ履歴の保存（10分ごと）
+    // ========================================================================
+    if (current_time - last_history_save >= HISTORY_INTERVAL) {
+      if (sensor_aht21_enabled) {
+        // AHT21の値は自己発熱補正済み（温度・湿度とも）
+        temp_history[history_index] = aht21_data.temperature;
+        humid_history[history_index] = aht21_data.humidity;
+      } else if (sensor_bmp280_enabled) {
+        temp_history[history_index] = bmp280_data.temperature;
+        humid_history[history_index] = 0;  // BMP280には湿度センサーなし
+      }
+      
+      history_index = (history_index + 1) % HISTORY_SIZE;
+      if (history_count < HISTORY_SIZE) {
+        history_count++;
+      }
+      last_history_save = current_time;
+      
+      Serial.println("\n📊 データ履歴を保存しました");
+      Serial.printf("   履歴数: %d/%d\n", history_count, HISTORY_SIZE);
     }
     
     // どれか1つ以上のセンサーが有効なら表示
@@ -604,6 +672,11 @@ void loop() {
           displayWiFiQR(WIFI_SSID, WIFI_PASSWORD);
           break;
         }
+        case 7:
+          // Climate Modern（温度/湿度モダンデザイン）
+          displayClimateModern(aht21_data, sensor_aht21_enabled, bmp280_data, sensor_bmp280_enabled,
+                               temp_history, humid_history, history_count, history_index);
+          break;
         default:
           // 無効な画面モード（デフォルトケース）
           // 通常は到達しない
