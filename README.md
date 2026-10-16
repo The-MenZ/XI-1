@@ -108,7 +108,7 @@ graph TB
 
 | 画面 | 内容 | データソース |
 |------|------|------------|
-| **0: Air Quality** | eCO2・TVOC・AQI | ENS160 |
+| **0: Air Quality** | 大きな AQI の数字と星、換気をうながす上げ下げ窓（AQI 4 で少し、5 で全開に開く。起動後約3分はブラインド）。下に eCO2・TVOC | ENS160 |
 | **1: Climate** | 温度・湿度・気圧・高度 | AHT21・BMP280 |
 | **2: Ambience** | 照度・マイク音量 | VEML7700・MAX9814 |
 | **3: Gas Sensor** | 炭鉱のカナリアと RPG 風の HP ゲージ（HP は Rs/Ro から計算。起動後3分間は卵） | MICS5524 |
@@ -120,7 +120,7 @@ graph TB
 | **9: Weather** | 今の天気・気温と、今日・明日の天気・最高/最低気温・降水確率 | Open-Meteo（地域は設定ページで選ぶ） |
 | **10: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
 
-画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md) を参照。
+画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md) を参照。
 
 ---
 
@@ -271,6 +271,7 @@ platformio run --target upload
 - [VEML7700_QUICK_START.md](./VEML7700_QUICK_START.md) - 光センサー設定
 - [VEML7700_INTEGRATION.md](./VEML7700_INTEGRATION.md) - 光センサー統合
 - [MICS5524_INTEGRATION.md](./MICS5524_INTEGRATION.md) - ガスセンサー統合
+- [AIR_QUALITY_SCREEN.md](./AIR_QUALITY_SCREEN.md) - 空気質画面
 - [WIFI_QR_SCREEN.md](./WIFI_QR_SCREEN.md) - WiFi QR コード画面
 - [MONTHDAY_SCREEN.md](./MONTHDAY_SCREEN.md) - 月日表示画面
 - [WEATHER_SCREEN.md](./WEATHER_SCREEN.md) - 天気画面と地域の設定

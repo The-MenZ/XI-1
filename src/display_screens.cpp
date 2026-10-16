@@ -7,48 +7,301 @@
 #include <qrcode.h>
 #include <U8g2_for_Adafruit_GFX.h>
 
-// 関数プロトタイプ（main.cppで定義）
-extern String getAQIStatusEnglish(uint8_t aqi);
+// 他の画面で定義している描画の部品
+// 丸いペン（半径 r）で線を引く（画面5 の月日表示で定義）
+static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r, uint16_t color = GxEPD_BLACK);
+// 2次ベジェ曲線を丸いペンでなぞる（画面3 のガスセンサーで定義。r はペンの半径）
+static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2, int16_t r = 1);
+// 丸ゴシック風の数字（0〜9）か「?」（GLYPH_QUESTION）を描く（画面5 の月日表示で定義）
+#define GLYPH_QUESTION 10
+static void drawGlyph(int glyph, int16_t left, int16_t top, int16_t w, int16_t h, int16_t r, int16_t edge);
+// 2px の線と、黒い太陽（画面9 の天気で定義）
+static void drawThickLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1);
+static void drawSun(int16_t cx, int16_t cy, int16_t r);
 
 // ============================================================================
-// 画面0: Air Quality (空気質)
+// 画面0: Air Quality（大きな AQI の数字と、換気をうながす上げ下げ窓）
 // ============================================================================
+// 左に AQI（1〜5）の白抜きの数字と星（AQI 1 で★5つ）、右に上げ下げ窓を描く。
+// 空気が悪いほど、窓ガラスも含めて部屋全体に点々のもやが濃くかかる。窓の外はいつも晴れ。
+// AQI 4 で下の窓を少し上げ、AQI 5 で全開にする。開いたすき間と、そこから入る風の通り道だけもやが晴れる。
+// ウォームアップ中は「?」と、10枚の羽根のブラインドを出し、10% 進むごとに羽根を1枚上げる。
+// 絵は画像を持たずに、四角・円・三角と丸いペンの線で描く
+
+// 窓（外枠の外側の位置と大きさ）。枠の内側がガラス
+#define AQ_WIN_X 108
+#define AQ_WIN_Y 16
+#define AQ_WIN_W 82
+#define AQ_WIN_H 136
+#define AQ_FRAME 5                           // 枠の太さ
+#define AQ_GLASS_X (AQ_WIN_X + AQ_FRAME)      // 113
+#define AQ_GLASS_Y (AQ_WIN_Y + AQ_FRAME)      // 21
+#define AQ_GLASS_W (AQ_WIN_W - 2 * AQ_FRAME)  // 72
+#define AQ_GLASS_H (AQ_WIN_H - 2 * AQ_FRAME)  // 126
+#define AQ_RAIL_Y 82        // 閉じているときの、上下の窓の合わせ目（太さ 5px）
+#define AQ_ROOM_BOTTOM 160  // もやをかける範囲の下端（その下は文字の帯）
+#define AQ_WIND_X 112       // 風の通り道が始まる x（窓の左の枠）
+
+// 大きな数字の外形と、白抜きにする黒い縁の太さ
+#define AQ_DIGIT_X 20
+#define AQ_DIGIT_Y 38
+#define AQ_DIGIT_W 64
+#define AQ_DIGIT_H 88
+#define AQ_DIGIT_PEN_R 9  // ペンの半径（線の太さは 2r+1 = 19px）
+#define AQ_DIGIT_EDGE 4
+
+// ブラインド（上の 6px がレールで、その下に 12px の羽根が10枚）
+#define AQ_BLIND_SLATS 10
+#define AQ_SLAT_H 12
+#define AQ_BLIND_TOP (AQ_GLASS_Y + 6)
+
+// AQI ごとのもやの点の間隔（px。0 は点なし）。点は 2×2px
+static const uint8_t AQ_HAZE_STEP[5] = {0, 12, 8, 6, 5};
+
+// AQI 1〜3 の下の帯の文字（4・5 は OPEN!）
+static const char* const AQ_STATUS[3] = {"FRESH", "GOOD", "STUFFY"};
+
+// 窓を開けたときの形（AQI 4 と 5）
+struct AQOpening {
+  int16_t pane_top;       // 上げた下の窓の上の桟の y（-1 は枠に隠れて見えない）
+  int16_t pane_bottom;    // 上げた下の窓の下の桟の y。桟（4px）より下が開いたすき間
+  int16_t band[4];        // 風の通り道の上端・下端の y（窓の側）と、上端・下端の y（左端）
+  uint8_t lines;          // 風の線の数
+  int16_t line_y[3][2];   // 風の線の始点（窓の側）と終点（左端）の y
+};
+
+static const AQOpening AQ_OPENINGS[2] = {
+  {60, 126, {124, 150, 100, 132}, 2, {{134, 106}, {144, 118}, {0, 0}}},  // AQI 4: 少しだけ開ける
+  {-1, 82, {82, 152, 66, 152}, 3, {{98, 82}, {116, 100}, {134, 120}}},   // AQI 5: 全開
+};
+
+// 星の10個の頂点（外と内が交互。外の半径を 100 としたとき。上から時計回り）
+static const int8_t STAR_POINTS[10][2] = {
+  {0, -100}, {26, -36}, {95, -31}, {43, 14}, {59, 81}, {0, 45}, {-59, 81}, {-43, 14}, {-95, -31}, {-26, -36},
+};
+
+// 今のフォントで text を cx を中心に描く（y はベースライン）
+static void printCenteredText(const char* text, int16_t cx, int16_t y) {
+  int16_t bx, by;
+  uint16_t bw, bh;
+  display.getTextBounds(text, 0, 0, &bx, &by, &bw, &bh);
+  display.setCursor(cx - bx - bw / 2, y);
+  display.print(text);
+}
+
+// 太さ t の四角い枠（x, y, w, h は外側）
+static void drawFrame(int16_t x, int16_t y, int16_t w, int16_t h, int16_t t) {
+  display.fillRect(x, y, w, t, GxEPD_BLACK);
+  display.fillRect(x, y + h - t, w, t, GxEPD_BLACK);
+  display.fillRect(x, y, t, h, GxEPD_BLACK);
+  display.fillRect(x + w - t, y, t, h, GxEPD_BLACK);
+}
+
+// 星（filled なら塗り、そうでなければ輪郭だけ）
+static void drawStar(int16_t cx, int16_t cy, int16_t r, bool filled) {
+  for (int i = 0; i < 10; i++) {
+    const int8_t* p = STAR_POINTS[i];
+    const int8_t* q = STAR_POINTS[(i + 1) % 10];
+    int16_t x0 = cx + lroundf(p[0] * r / 100.0f), y0 = cy + lroundf(p[1] * r / 100.0f);
+    int16_t x1 = cx + lroundf(q[0] * r / 100.0f), y1 = cy + lroundf(q[1] * r / 100.0f);
+    if (filled) {
+      display.fillTriangle(cx, cy, x0, y0, x1, y1, GxEPD_BLACK);
+    } else {
+      drawThickLine(x0, y0, x1, y1);
+    }
+  }
+}
+
+// 4本の光のきらめき（AQI 1 のとき窓ガラスに出す）
+static void drawSparkle(int16_t cx, int16_t cy, int16_t r) {
+  int16_t q = r / 3;
+  display.fillTriangle(cx - q, cy, cx + q, cy, cx, cy - r, GxEPD_BLACK);
+  display.fillTriangle(cx - q, cy, cx + q, cy, cx, cy + r, GxEPD_BLACK);
+  display.fillTriangle(cx, cy - q, cx, cy + q, cx - r, cy, GxEPD_BLACK);
+  display.fillTriangle(cx, cy - q, cx, cy + q, cx + r, cy, GxEPD_BLACK);
+}
+
+// 鳥（翼2枚の曲線。hw は片方の翼の幅）
+static void drawBird(int16_t x, int16_t y, int16_t hw) {
+  drawCurve(x - hw, y - hw * 0.4f, x - hw * 0.5f, y - hw * 0.8f, x, y);
+  drawCurve(x, y, x + hw * 0.5f, y - hw * 0.8f, x + hw, y - hw * 0.4f);
+}
+
+// 窓の外の景色（太陽と雪をかぶった山と鳥）。空気が悪くても、外はいつも晴れ
+static void drawAQScenery() {
+  const int16_t x = AQ_GLASS_X, y = AQ_GLASS_Y, w = AQ_GLASS_W, h = AQ_GLASS_H;
+  // 山の稜線（左の高い山と右の低い山）と、左の山の雪の縁（ぎざぎざ）。ガラスの幅・高さに対する %
+  static const int8_t RIDGE[5][2] = {{0, 100}, {34, 46}, {58, 74}, {80, 56}, {100, 82}};
+  static const int8_t SNOW[5][2] = {{28, 56}, {31, 60}, {35, 55}, {38, 60}, {42, 56}};
+
+  drawSun(x + w * 74 / 100, y + h * 20 / 100, 18);
+  for (int i = 0; i < 4; i++) {
+    drawRoundLine(x + w * RIDGE[i][0] / 100, y + h * RIDGE[i][1] / 100,
+                  x + w * RIDGE[i + 1][0] / 100, y + h * RIDGE[i + 1][1] / 100, 1);
+    drawRoundLine(x + w * SNOW[i][0] / 100, y + h * SNOW[i][1] / 100,
+                  x + w * SNOW[i + 1][0] / 100, y + h * SNOW[i + 1][1] / 100, 1);
+  }
+  // 鳥は太陽の左の空に、右上がりに2羽
+  drawBird(x + w * 15 / 100, y + h * 23 / 100, 6);
+  drawBird(x + w * 33 / 100, y + h * 17 / 100, 5);
+}
+
+// 窓の外枠と窓台
+static void drawAQWindowFrame() {
+  drawFrame(AQ_WIN_X, AQ_WIN_Y, AQ_WIN_W, AQ_WIN_H, AQ_FRAME);
+  display.fillRect(104, 150, 90, 6, GxEPD_BLACK);
+}
+
+// 左上の「AQI」（もやの上でも読めるよう、白い台にのせる）
+static void drawAQLabel() {
+  display.fillRoundRect(22, 6, 60, 24, 4, GxEPD_WHITE);
+  printCenteredText("AQI", 52, 25);
+}
+
+// 風の通り道の上端と下端（x は 0〜AQ_WIND_X。窓から左へ、なめらかに広がりながら上がる）
+static void windBand(const AQOpening& o, int16_t x, int16_t* top, int16_t* bottom) {
+  float u = (float)(AQ_WIND_X - x) / AQ_WIND_X;
+  float s = u * u * (3 - 2 * u);  // 両端でゆるやかになる 0〜1
+  *top = o.band[0] + lroundf((o.band[2] - o.band[0]) * s);
+  *bottom = o.band[1] + lroundf((o.band[3] - o.band[1]) * s);
+}
+
+// 部屋全体（窓ガラスも含む）に点々のもやをかける。窓を開けていれば、すき間と風の通り道には打たない
+static void drawAQHaze(uint8_t aqi, const AQOpening* open) {
+  uint8_t step = AQ_HAZE_STEP[aqi - 1];
+  if (step == 0) {
+    return;
+  }
+  for (int16_t x = step / 2; x < display.width(); x += step) {
+    int16_t band_top = 0, band_bottom = -1;  // 通り道がない列は空にしておく
+    if (open && x <= AQ_WIND_X) {
+      windBand(*open, x, &band_top, &band_bottom);
+    }
+    bool gap_column = open && x >= AQ_GLASS_X && x < AQ_GLASS_X + AQ_GLASS_W;
+    for (int16_t y = step / 2; y < AQ_ROOM_BOTTOM; y += step) {
+      if (y >= band_top && y <= band_bottom) {
+        continue;
+      }
+      if (gap_column && y >= open->pane_bottom + 4) {
+        continue;
+      }
+      display.fillRect(x, y, 2, 2, GxEPD_BLACK);
+    }
+  }
+}
+
+// 風の線（窓の側 (104, y0) から左端 (10, y1) へ、山と谷を交互に3つ波打つ。左端に矢じり）
+static void drawWindLine(int16_t y0, int16_t y1) {
+  const float x0 = 104, x1 = 10;
+  const int16_t r = 2;  // ペンの半径（線の太さは 5px）
+  float gx = (x1 - x0) / 3, gy = (y1 - y0) / 3.0f;
+  float px = x0, py = y0;
+  float cx = x0 + gx / 2, cy = y0 + gy / 2 - 8;  // 最初の山の制御点
+  for (int i = 0; i < 3; i++) {
+    float qx = px + gx, qy = py + gy;
+    drawCurve(px, py, cx, cy, qx, qy, r);
+    // 次の制御点は、今の制御点を終点で折り返したところ（山の次は谷になる）
+    cx = 2 * qx - cx;
+    cy = 2 * qy - cy;
+    px = qx;
+    py = qy;
+  }
+  float a = atan2f(y1 - y0, x1 - x0);
+  drawRoundLine(x1 - 10 * cosf(a - 0.6f), y1 - 10 * sinf(a - 0.6f), x1, y1, r);
+  drawRoundLine(x1 - 10 * cosf(a + 0.6f), y1 - 10 * sinf(a + 0.6f), x1, y1, r);
+}
+
+// ウォームアップ中: 「?」と閉じたブラインド。10% 進むごとに羽根が1枚上がる（終わるまで最後の1枚は残す）
+static void drawAQWarmup(float progress) {
+  int raised = constrain((int)(progress * AQ_BLIND_SLATS), 0, AQ_BLIND_SLATS - 1);
+  int slats = AQ_BLIND_SLATS - raised;
+  int16_t edge = AQ_BLIND_TOP + slats * AQ_SLAT_H;  // ブラインドの下の端
+
+  drawAQScenery();
+  drawAQWindowFrame();
+  // 羽根（白い板。上の 2px の線で隣の羽根と区切る）
+  for (int i = 0; i < slats; i++) {
+    int16_t y = AQ_BLIND_TOP + i * AQ_SLAT_H;
+    display.fillRect(AQ_GLASS_X, y, AQ_GLASS_W, AQ_SLAT_H, GxEPD_WHITE);
+    display.fillRect(AQ_GLASS_X, y, AQ_GLASS_W, 2, GxEPD_BLACK);
+  }
+  display.fillRect(AQ_GLASS_X, AQ_GLASS_Y, AQ_GLASS_W, 6, GxEPD_BLACK);  // 上のレール
+  display.fillRect(AQ_GLASS_X, edge - 2, AQ_GLASS_W, 5, GxEPD_BLACK);    // 下の重り
+  // 上げ下げのひも（左寄り。下の重りの少し下まで垂らす。右寄りだと上がりきる前に太陽と重なる）
+  int16_t cord = constrain(edge + 8, 34, 140);
+  display.fillRect(117, AQ_BLIND_TOP, 2, cord - AQ_BLIND_TOP, GxEPD_BLACK);
+  display.fillCircle(118, cord + 2, 3, GxEPD_BLACK);
+
+  drawGlyph(GLYPH_QUESTION, AQ_DIGIT_X, AQ_DIGIT_Y, AQ_DIGIT_W, AQ_DIGIT_H, AQ_DIGIT_PEN_R, AQ_DIGIT_EDGE);
+  drawAQLabel();
+  printCenteredText("WARMING UP", 100, 187);
+}
+
 void displayAirQuality(const ENS160Data& ens160_data, bool sensor_enabled) {
-  // タイトル
-  display.setCursor(2, 24);
-  display.println("Air Quality");
-  
-  if (sensor_enabled) {
-    // 行1: eCO2
-    display.setCursor(2, 56);
-    display.print("eCO2: ");
-    display.print((int)ens160_data.eco2);
-    display.println("ppm");
-    
-    // 行2: TVOC
-    display.setCursor(2, 88);
-    display.print("TVOC: ");
-    display.print((int)ens160_data.tvoc);
-    display.println("ppb");
-    
-    // 行3: AQI
-    display.setCursor(2, 120);
-    display.print("AQI:  ");
-    display.print(ens160_data.aqi);
-    display.println("/5");
-    
-    // 行4: AQI ステータス
-    display.setCursor(2, 152);
-    String aqi_status = getAQIStatusEnglish(ens160_data.aqi);
-    display.println(aqi_status.c_str());
-  } else {
+  if (!sensor_enabled) {
+    display.setCursor(2, 24);
+    display.println("Air Quality");
     display.setCursor(2, 56);
     display.println("ENS160");
     display.setCursor(2, 88);
     display.println("Not");
     display.setCursor(2, 120);
     display.println("Connected");
+    return;
   }
+
+  // ウォームアップ中や、まだ測れていない（AQI が 0）ときはブラインド
+  uint8_t aqi = ens160_data.aqi;
+  if (ens160_data.validity != ENS160_VALIDITY_NORMAL || aqi < 1 || aqi > 5) {
+    drawAQWarmup(ens160_data.warmup_progress);
+    return;
+  }
+
+  const AQOpening* open = aqi >= 4 ? &AQ_OPENINGS[aqi - 4] : nullptr;
+  drawAQScenery();
+  drawAQHaze(aqi, open);
+  if (open) {
+    for (int i = 0; i < open->lines; i++) {
+      drawWindLine(open->line_y[i][0], open->line_y[i][1]);
+    }
+  }
+
+  drawAQWindowFrame();
+  if (!open) {
+    display.fillRect(AQ_WIN_X, AQ_RAIL_Y, AQ_WIN_W, 5, GxEPD_BLACK);  // 上下の窓の合わせ目
+    if (aqi == 1) {
+      drawSparkle(AQ_GLASS_X + 10, AQ_GLASS_Y + 10, 6);
+    }
+  } else {
+    if (open->pane_top >= 0) {
+      // 少しだけ上げたときは、上の窓の合わせ目が、上げた窓のガラスごしに細く見える
+      display.fillRect(AQ_GLASS_X, AQ_RAIL_Y + 1, AQ_GLASS_W, 3, GxEPD_BLACK);
+      display.fillRect(AQ_WIN_X, open->pane_top, AQ_WIN_W, 4, GxEPD_BLACK);
+    }
+    display.fillRect(AQ_WIN_X, open->pane_bottom, AQ_WIN_W, 4, GxEPD_BLACK);
+  }
+
+  // 風の線より手前に、大きな数字と星を描く（星は白い台の上）
+  drawGlyph(aqi, AQ_DIGIT_X, AQ_DIGIT_Y, AQ_DIGIT_W, AQ_DIGIT_H, AQ_DIGIT_PEN_R, AQ_DIGIT_EDGE);
+  drawAQLabel();
+  display.fillRoundRect(4, 136, 92, 20, 4, GxEPD_WHITE);
+  for (int i = 0; i < 5; i++) {
+    drawStar(16 + i * 17, 146, 7, i < 6 - aqi);
+  }
+
+  // 下の帯: AQI 1〜3 は空気の様子、4・5 は黒地に白で OPEN!
+  if (!open) {
+    printCenteredText(AQ_STATUS[aqi - 1], 100, 179);
+  } else {
+    display.fillRoundRect(30, 161, 140, 22, 4, GxEPD_BLACK);
+    display.setTextColor(GxEPD_WHITE);
+    printCenteredText(aqi == 5 ? "OPEN!!" : "OPEN!", 100, 179);
+    display.setTextColor(GxEPD_BLACK);
+  }
+  char text[32];
+  snprintf(text, sizeof(text), "eCO2 %u  TVOC %u", (unsigned)ens160_data.eco2, (unsigned)ens160_data.tvoc);
+  display.setFont(&FreeSans9pt7b);
+  printCenteredText(text, 100, 197);
 }
 
 // ============================================================================
@@ -179,9 +432,6 @@ void displayAmbience(
 #define CANARY_PEN_R 1       // 線を引くペンの半径（線の太さは 2r+1 = 3px）
 #define HP_SEGMENTS 10       // HP ゲージのマスの数（1マス = HP 10）
 
-// 画面5 の月日表示で定義（丸いペンで線を引く）
-static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r);
-
 // 楕円を塗る。上半分と下半分で縦の半径を変えられる（卵の形に使う）
 static void fillEllipse(int16_t cx, int16_t cy, int16_t rx, int16_t ry_top, int16_t ry_bottom, uint16_t color) {
   for (int16_t dy = -ry_top; dy <= ry_bottom; dy++) {
@@ -204,8 +454,9 @@ static void drawOutlinedCircle(int16_t cx, int16_t cy, int16_t r) {
   display.fillCircle(cx, cy, r, GxEPD_WHITE);
 }
 
-// (x0, y0) から (x2, y2) への2次ベジェ曲線（制御点 (x1, y1)）を丸いペンでなぞる
-static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2) {
+// (x0, y0) から (x2, y2) への2次ベジェ曲線（制御点 (x1, y1)）を半径 r の丸いペンでなぞる
+// r の既定値（ファイルの先頭で宣言）はカナリアの線と同じ 1（CANARY_PEN_R）
+static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2, int16_t r) {
   const int n = 8;
   float px = x0, py = y0;
   for (int k = 1; k <= n; k++) {
@@ -213,7 +464,7 @@ static void drawCurve(float x0, float y0, float x1, float y1, float x2, float y2
     float u = 1 - t;
     float qx = u * u * x0 + 2 * u * t * x1 + t * t * x2;
     float qy = u * u * y0 + 2 * u * t * y1 + t * t * y2;
-    drawRoundLine(px, py, qx, qy, CANARY_PEN_R);
+    drawRoundLine(px, py, qx, qy, r);
     px = qx;
     py = qy;
   }
@@ -496,8 +747,14 @@ static const DigitGlyph DIGIT_GLYPHS[10] = {
   DIGIT_GLYPH(DIGIT_5), DIGIT_GLYPH(DIGIT_6), DIGIT_GLYPH(DIGIT_7), DIGIT_GLYPH(DIGIT_8), DIGIT_GLYPH(DIGIT_9),
 };
 
+// 「?」（画面0 のウォームアップ中に使う）。上のかぎ、短い縦線、下の点
+static const DigitStroke GLYPH_Q[] = {
+  STROKE_ARC(30, 20, 24, 20, 190, 420), STROKE_LINE(42, 37, 30, 48), STROKE_LINE(30, 48, 30, 52), STROKE_LINE(30, 80, 30, 80),
+};
+static const DigitGlyph QUESTION_GLYPH = DIGIT_GLYPH(GLYPH_Q);
+
 // 半径 r の丸いペンで (x0, y0) → (x1, y1) をなぞる（両端に円、間を2つの三角形で埋める）
-static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r) {
+static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r, uint16_t color) {
   float dx = x1 - x0, dy = y1 - y0;
   float len = sqrtf(dx * dx + dy * dy);
   if (len > 0.5f) {
@@ -507,27 +764,19 @@ static void drawRoundLine(float x0, float y0, float x1, float y1, int16_t r) {
     int16_t bx = lroundf(x0 - nx), by = lroundf(y0 - ny);
     int16_t cx = lroundf(x1 - nx), cy = lroundf(y1 - ny);
     int16_t ex = lroundf(x1 + nx), ey = lroundf(y1 + ny);
-    display.fillTriangle(ax, ay, bx, by, cx, cy, GxEPD_BLACK);
-    display.fillTriangle(ax, ay, cx, cy, ex, ey, GxEPD_BLACK);
+    display.fillTriangle(ax, ay, bx, by, cx, cy, color);
+    display.fillTriangle(ax, ay, cx, cy, ex, ey, color);
   }
-  display.fillCircle(lroundf(x0), lroundf(y0), r, GxEPD_BLACK);
-  display.fillCircle(lroundf(x1), lroundf(y1), r, GxEPD_BLACK);
+  display.fillCircle(lroundf(x0), lroundf(y0), r, color);
+  display.fillCircle(lroundf(x1), lroundf(y1), r, color);
 }
 
-// 区画 (cellX, cellY) の中央に数字を1つ描く
-static void drawDigitInCell(int digit, int16_t cellX, int16_t cellY) {
-  const int16_t r = MONTHDAY_PEN_R;
-  // 設計座標 → 画面座標。外形が DIGIT_W × DIGIT_H になるよう、ペンの太さを除いた分に中心線を合わせる
-  float sx = (MONTHDAY_DIGIT_W - 2 * r - 1) / 60.0f;
-  float sy = (MONTHDAY_DIGIT_H - 2 * r - 1) / 80.0f;
-  float ox = cellX + (MONTHDAY_CELL - MONTHDAY_DIGIT_W) / 2.0f + r;
-  float oy = cellY + (MONTHDAY_CELL - MONTHDAY_DIGIT_H) / 2.0f + r;
-
-  const DigitGlyph& glyph = DIGIT_GLYPHS[digit];
+// 字の中心線を、半径 r のペンでなぞる（設計座標 (x, y) → 画面座標 (ox + x * sx, oy + y * sy)）
+static void drawGlyphStrokes(const DigitGlyph& glyph, float ox, float oy, float sx, float sy, int16_t r, uint16_t color) {
   for (uint8_t i = 0; i < glyph.count; i++) {
     const DigitStroke& s = glyph.strokes[i];
     if (s.kind == 'L') {
-      drawRoundLine(ox + s.p0 * sx, oy + s.p1 * sy, ox + s.p2 * sx, oy + s.p3 * sy, r);
+      drawRoundLine(ox + s.p0 * sx, oy + s.p1 * sy, ox + s.p2 * sx, oy + s.p3 * sy, r, color);
       continue;
     }
 
@@ -540,11 +789,32 @@ static void drawDigitInCell(int digit, int16_t cellX, int16_t cellY) {
     for (int k = 1; k <= n; k++) {
       float a = a0 + (a1 - a0) * k / n;
       float qx = cx + rx * cosf(a), qy = cy + ry * sinf(a);
-      drawRoundLine(px, py, qx, qy, r);
+      drawRoundLine(px, py, qx, qy, r, color);
       px = qx;
       py = qy;
     }
   }
+}
+
+// 数字（0〜9）か「?」（GLYPH_QUESTION）を、外形が w × h になるよう (left, top) に描く
+// edge が 0 なら黒く塗り、1 以上なら太さ edge の黒い縁だけ残した白抜きにする
+static void drawGlyph(int glyph, int16_t left, int16_t top, int16_t w, int16_t h, int16_t r, int16_t edge) {
+  const DigitGlyph& g = glyph == GLYPH_QUESTION ? QUESTION_GLYPH : DIGIT_GLYPHS[glyph];
+  // 設計座標 → 画面座標。外形が w × h になるよう、ペンの太さを除いた分に中心線を合わせる
+  float sx = (w - 2 * r - 1) / 60.0f;
+  float sy = (h - 2 * r - 1) / 80.0f;
+  // 白抜きは、黒いペンで全部なぞってから、同じ中心線を細い白いペンでなぞる
+  // （1本ずつ黒と白を重ねると、次の線の黒が前の線の白を消してしまう）
+  drawGlyphStrokes(g, left + r, top + r, sx, sy, r, GxEPD_BLACK);
+  if (edge > 0) {
+    drawGlyphStrokes(g, left + r, top + r, sx, sy, r - edge, GxEPD_WHITE);
+  }
+}
+
+// 区画 (cellX, cellY) の中央に数字を1つ描く
+static void drawDigitInCell(int digit, int16_t cellX, int16_t cellY) {
+  drawGlyph(digit, cellX + (MONTHDAY_CELL - MONTHDAY_DIGIT_W) / 2, cellY + (MONTHDAY_CELL - MONTHDAY_DIGIT_H) / 2,
+            MONTHDAY_DIGIT_W, MONTHDAY_DIGIT_H, MONTHDAY_PEN_R, 0);
 }
 
 void displayMonthDay(int month, int day) {
