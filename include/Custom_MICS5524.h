@@ -52,6 +52,11 @@ private:
   int day_index = 0;                 // 今日の分の添字
   unsigned long day_start = 0;       // 今日の分を数え始めた時刻（millis）
 
+  // 基準（キャリブレーションと日ごとの記録）に入れる出力電圧の下限（V）。これより低い出力（Rs 約 490kΩ 以上）は
+  // コネクタの抜けかけなどとみなして入れない。入れると Ro が跳ね上がったまま8日残り、元に戻っても HP がほぼ 0 になる。
+  // この個体のきれいな空気は約 0.44V（Ro ≈ 104kΩ）。Ro がもっと大きい個体では、この値を下げる
+  const float MIN_BASELINE_VOLTAGE = 0.1f;
+
   // 今の Rs を今日の分に入れ（1日たっていたら次の日へ進める）、Ro を直近 RO_DAYS 日の最大にする
   void updateBaseline(float rs);
 

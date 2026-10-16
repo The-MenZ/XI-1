@@ -63,7 +63,7 @@ void CustomMICS5524::calibrate() {
         float v = adcRawToVolts(analogRead(ADC_PIN));
 
         // Rs = Rl * (Vc - Vout) / Vout
-        if (v > 0.01f) {  // Prevent division by zero
+        if (v >= MIN_BASELINE_VOLTAGE) {  // 低すぎる出力は基準にしない（0 での割り算も防ぐ）
             float rs = LOAD_RESISTANCE * (CIRCUIT_VOLTAGE - v) / v;
             sum_resistance += rs;
             valid_samples++;
@@ -155,7 +155,10 @@ MICS5524Data CustomMICS5524::read() {
     data.calibrated = calibrated;
     if (calibrated && Ro > 0) {
         // 基準の Ro を直近の記録に合わせてから比を出す（Ro は直近の最大なので Rs/Ro は 1 を超えない）
-        updateBaseline(data.resistance);
+        // 出力が低すぎるときは基準に入れず、Ro はそのまま（このときだけ Rs/Ro が 1 を超えうる）
+        if (filtered_voltage >= MIN_BASELINE_VOLTAGE) {
+            updateBaseline(data.resistance);
+        }
         data.ro = Ro;
         data.rs_ro_ratio = data.resistance / Ro;
 
