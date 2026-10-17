@@ -18,7 +18,7 @@ void webSettingsLoop();
 // （main.cpp がウォームアップ後に実行して false に戻す）
 extern bool mics5524_calibration_requested;
 
-// 今の騒音レベル（MAX9814。引く前の dB）。設定ページで引く値を決める目安に出す
+// 今の騒音レベル（MAX9814。本体が測った dB）。設定ページで静かなときの騒音レベルを決める目安に出す
 // （main.cpp がマイクを読むたびに入れる。NAN はまだ測っていない）
 extern float current_sound_db;
 

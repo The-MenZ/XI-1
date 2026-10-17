@@ -16,7 +16,7 @@
 #define DEFAULT_NTP_SERVER "pool.ntp.org"
 #define DEFAULT_TIMEZONE "JST-9"
 #define DEFAULT_ALTITUDE_M 0  // 0 m なら海面気圧の換算をしないのと同じ
-#define DEFAULT_MIC_FLOOR_DB 55  // 実機で静かにしたときの騒音レベル（54.4〜55.1dB）。静かなときに針が +0 で止まるよう切り上げた値
+#define DEFAULT_MIC_FLOOR_DB 55  // 実機で静かにしたときの騒音レベル（54.4〜55.1dB）。静かなときに針が 30dB で止まるよう切り上げた値
 
 // NVS の名前空間（キーは15文字以内）
 static const char* NVS_NAMESPACE = "xi1";

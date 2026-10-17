@@ -393,14 +393,14 @@ void displayAmbience(
       display.println("No Light");
     }
     
-    // 行3: 補正後の騒音（マイク基板のノイズの高さを引いた dB。静かなときが +0）
+    // 行3: iPhone の騒音計アプリに合わせた騒音（dB。静かなときが 30）
     if (max9814_enabled) {
       display.setCursor(2, 120);
-      display.print("Sound: +");
-      display.print(lroundf(max9814_data.db_above_floor));
+      display.print("Sound: ");
+      display.print(lroundf(max9814_data.db_phone));
       display.println("dB");
 
-      // 行4: 引く前の騒音レベル（静かにしたときのこの値を、設定ページの「引く値」に入れる）
+      // 行4: 本体が測った騒音レベル（静かにしたときのこの値を、設定ページの「静かなときの騒音レベル」に入れる）
       display.setCursor(2, 152);
       display.print("Raw:   ");
       display.print(lroundf(max9814_data.db_level));
@@ -1800,28 +1800,29 @@ void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float t
 // ============================================================================
 // 画面11: Sound（レトロな VU メーター）
 // ============================================================================
-// 針が指すのは補正後の騒音（騒音レベルからマイク基板のノイズの高さを引いた dB。静かなときが +0。引く値は設定ページで決める）。
-// 目盛りは +0〜+40dB で 5dB ごと。+30dB から右は黒い帯（うるさい）。
-// +40dB を超えても針は +40 で止め、下の数字はそのまま出す。
-// 下の帯には補正後の数字を出す。絵は画像を持たずに、線と円で描く
+// 針が指すのは iPhone の騒音計アプリに合わせた騒音（dB。静かなときが 30。変換表は Custom_MAX9814.h）。
+// 目盛りは 30〜80dB で 5dB ごと。70dB から右は黒い帯（うるさい）。
+// 80dB を超えても針は 80 で止め、下の数字はそのまま出す。
+// 下の帯には同じ数字を出す。絵は画像を持たずに、線と円で描く
 
 #define VU_CX 100           // 針の軸の位置
 #define VU_CY 148
 #define VU_R 92             // 目盛りの弧の半径
-#define VU_DB_MAX 40        // 目盛りの右端（+dB）
-#define VU_LOUD_DB 30       // ここから右が黒い帯（うるさい）
-#define VU_ANGLE_LEFT 140   // +0dB の向き（度。右が 0 で反時計回り）
-#define VU_ANGLE_SPAN 100   // +0〜+40dB の角度の幅（度）
+#define VU_DB_MIN 30        // 目盛りの左端（dB。マイク基板のノイズに埋もれて、これより静かな音は測れない）
+#define VU_DB_MAX 80        // 目盛りの右端（dB）
+#define VU_LOUD_DB 70       // ここから右が黒い帯（うるさい）
+#define VU_ANGLE_LEFT 140   // 30dB の向き（度。右が 0 で反時計回り）
+#define VU_ANGLE_SPAN 100   // 30〜80dB の角度の幅（度）
 #define VU_NEEDLE_R 84      // 針の長さ
 
-// 軸から +db の向きに r 離れた位置
+// 軸から db の向きに r 離れた位置
 static void vuPoint(float db, float r, float* x, float* y) {
-  float a = (VU_ANGLE_LEFT - db * VU_ANGLE_SPAN / VU_DB_MAX) * DEG_TO_RAD;
+  float a = (VU_ANGLE_LEFT - (db - VU_DB_MIN) * VU_ANGLE_SPAN / (VU_DB_MAX - VU_DB_MIN)) * DEG_TO_RAD;
   *x = VU_CX + r * cosf(a);
   *y = VU_CY - r * sinf(a);
 }
 
-// +db0〜+db1 の弧を、半径 pen_r の丸いペンでなぞる（1dB ごとの線分）
+// db0〜db1 の弧を、半径 pen_r の丸いペンでなぞる（1dB ごとの線分）
 static void drawVUArc(int db0, int db1, int16_t pen_r) {
   float px, py;
   vuPoint(db0, VU_R, &px, &py);
@@ -1851,14 +1852,14 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
   }
 
   // 目盛りの弧と、うるさい帯（太さ 9px）
-  drawVUArc(0, VU_DB_MAX, 1);
+  drawVUArc(VU_DB_MIN, VU_DB_MAX, 1);
   drawVUArc(VU_LOUD_DB, VU_DB_MAX, 4);
 
-  // 目盛りの線（5dB ごと。10dB ごとは長くして +dB の数字を添える）
+  // 目盛りの線（5dB ごと。10dB ごとは長くして dB の数字を添える）
   beginU8g2Fonts();
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
   setU8g2FontTransparent(u8g2_font_helvR08_tf);
-  for (int db = 0; db <= VU_DB_MAX; db += 5) {
+  for (int db = VU_DB_MIN; db <= VU_DB_MAX; db += 5) {
     bool major = db % 10 == 0;
     float x0, y0, x1, y1;
     vuPoint(db, VU_R, &x0, &y0);
@@ -1866,7 +1867,7 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
     drawRoundLine(x0, y0, x1, y1, 1);
     if (major) {
       char label[4];
-      snprintf(label, sizeof(label), "+%d", db);
+      snprintf(label, sizeof(label), "%d", db);
       float lx, ly;
       vuPoint(db, VU_R + 14, &lx, &ly);
       printCentered(label, lroundf(lx), lroundf(ly) + 4);  // 字の高さの半分下げて、中心を合わせる
@@ -1878,16 +1879,16 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled) {
   printCentered("dB", VU_CX, 110);
 
   // 針と軸
-  float db = max9814_data.db_above_floor;
-  float needle_db = constrain(db, 0.0f, (float)VU_DB_MAX);
+  float db = max9814_data.db_phone;
+  float needle_db = constrain(db, (float)VU_DB_MIN, (float)VU_DB_MAX);
   float nx, ny;
   vuPoint(needle_db, VU_NEEDLE_R, &nx, &ny);
   drawRoundLine(VU_CX, VU_CY, nx, ny, 1);
   display.fillCircle(VU_CX, VU_CY, 8, GxEPD_BLACK);
 
-  // 下の帯: 補正後の数字（「+18」と「dB」を合わせて真ん中に寄せる）
+  // 下の帯: 数字（「60」と「dB」を合わせて真ん中に寄せる）
   char value[8];
-  snprintf(value, sizeof(value), "+%ld", lroundf(db));
+  snprintf(value, sizeof(value), "%ld", lroundf(db));
   int16_t bx, by;
   uint16_t value_w, unit_w, bh;
   display.setFont(&FreeSans18pt7b);

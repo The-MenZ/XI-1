@@ -230,12 +230,12 @@ static void handleRoot() {
           String(ALTITUDE_M_MIN) + " max=" + String(ALTITUDE_M_MAX) + " value=" + String(settings.altitude_m) + ">"
           "</fieldset>";
 
-  // 騒音（Sound 画面の針は、騒音レベルからこの値を引いた dB。静かなときが +0dB になる）
+  // 騒音（Sound 画面は、本体が測った騒音レベルを iPhone の騒音計アプリの dB に直して出す。この値が 30dB になる）
   html += "<fieldset><legend>騒音（MAX9814）</legend>"
-          "騒音レベルから引く値（dB。静かにしたときの「引く前の騒音レベル」を入れる）"
+          "静かなときの騒音レベル（dB。静かにしたときの「今の騒音レベル」を入れる。Sound 画面ではこれが 30dB になる）"
           "<input type=number name=mf min=" + String(MIC_FLOOR_DB_MIN) + " max=" + String(MIC_FLOOR_DB_MAX) +
           " value=" + String(settings.mic_floor_db) + ">"
-          "<small>今の騒音レベル（引く前）: " + soundLevelText() +
+          "<small>今の騒音レベル（本体が測った値）: " + soundLevelText() +
           "。ページを開き直すと新しい値になります</small>"
           "</fieldset>";
 
@@ -283,7 +283,7 @@ static void handleSave() {
   settings.interval_sec = constrain(server.arg("iv").toInt(), INTERVAL_SEC_MIN, INTERVAL_SEC_MAX);
   settings.altitude_m = constrain(server.arg("alt").toInt(), ALTITUDE_M_MIN, ALTITUDE_M_MAX);
 
-  // 騒音レベルから引く値（空欄なら変更しない）
+  // 静かなときの騒音レベル（空欄なら変更しない）
   String floor_db = server.arg("mf");
   floor_db.trim();
   if (floor_db.length() > 0) {
