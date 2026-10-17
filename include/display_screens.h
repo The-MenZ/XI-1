@@ -33,11 +33,9 @@ void displayClimate(
   const BMP280Data& bmp280_data, bool bmp280_enabled
 );
 
-// 画面2: Ambience (視聴覚環境)
-void displayAmbience(
-  const VEML7700Data& veml7700_data, bool veml7700_enabled,
-  const MAX9814Data& max9814_data, bool max9814_enabled
-);
+// 画面2: Moon（天体写真のような月。黒い空の真ん中に、今の満ち欠けの月を大きく描く）
+// 満ち欠けは now から計算する。synced が false（NTP で時刻が合う前）なら、影だけの月に「?」を出す
+void displayMoon(time_t now, bool synced);
 
 // 画面3: Gas Sensor (ガスセンサー)
 void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled);

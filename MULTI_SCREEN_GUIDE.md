@@ -20,7 +20,7 @@ ESP32-C3 + e-paper ディスプレイが **14の画面を10秒ごと（設定ペ
 │ ↓ 10秒                                      │
 │ 画面1: Climate          (AHT21 / BMP280)    │
 │ ↓ 10秒                                      │
-│ 画面2: Ambience         (VEML7700 / MAX9814)│
+│ 画面2: Moon             (NTP時刻)           │
 │ ↓ 10秒                                      │
 │ 画面3: Gas Sensor       (MICS5524)          │
 │ ↓ 10秒                                      │
@@ -97,22 +97,11 @@ AHT21 の補正量は `main.cpp` の `AHT21_TEMP_OFFSET`（10 °C）。両セン
 
 ---
 
-### 📱 **画面2: Ambience（視聴覚環境）** - `displayAmbience()`
-```
-Ambience
-Lux:   156lx
-White: 143
-Sound: +12dB
-Raw:   67dB
-```
+### 📱 **画面2: Moon（天体写真のような月）** - `displayMoon()`
 
-**表示内容:**
-- 照度（VEML7700, lux）
-- ホワイトチャネル（VEML7700, 参考値）
-- 騒音（MAX9814。iPhone の騒音計アプリに合わせた dB `db_phone`。静かなときが 30）
-- 本体が測った騒音レベル（MAX9814。dB、直近5回の中央値 `db_level`。静かにしたときのこの値を、設定ページの「静かなときの騒音レベル」に入れる）
+黒い空の真ん中に、今の満ち欠けの月を大きく描きます（数字は出さない）。月の海・クレーター・ティコの光の筋を白黒の点の濃さで描き、影の側は地球照のまばらな点。満ち欠けは時刻から計算し、時刻が合う前は影だけの月に「?」。詳しくは [MOON_SCREEN.md](MOON_SCREEN.md)。
 
-片方のセンサーがない場合は `No Light` / `No Sound` を表示。
+以前この番号にあった Ambience（照度・騒音の生の値）は、画面11: Sound と画面12: Light ができたので外しました。
 
 ---
 
@@ -276,7 +265,7 @@ Raw:   67dB
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
-  true,   // 画面2: Ambience (視聴覚環境)
+  true,   // 画面2: Moon (天体写真のような月)
   true,   // 画面3: Gas Sensor (ガスセンサー)
   true,   // 画面4: Time (パタパタ時計)
   true,   // 画面5: Month Day (月日表示)

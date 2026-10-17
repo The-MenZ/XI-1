@@ -174,7 +174,7 @@ case SCREEN_SETTINGS_QR:
 |------|--------|------|------|
 | 0 | Air Quality | eCO2, TVOC, AQI | 有効 |
 | 1 | Climate | 温度, 湿度, 気圧, 高度 | 有効 |
-| 2 | Ambience | 照度, 騒音レベル | 有効 |
+| 2 | Moon | 天体写真のような月（今の満ち欠け） | 有効 |
 | 3 | Gas Sensor | カナリアと HP ゲージ（起動後3分間は卵） | 有効 |
 | 4 | Time | パタパタ時計（時・分） | 有効 |
 | 5 | Month Day | 月・日のみ | 有効 |
@@ -197,7 +197,7 @@ Air Quality
     ↓ 10秒
 Climate
     ↓ 10秒
-Ambience
+Moon
     ↓ 10秒
 Gas Sensor
     ↓ 10秒

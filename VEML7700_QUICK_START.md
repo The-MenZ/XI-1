@@ -10,7 +10,7 @@
 ### 変更されたファイル
 - `platformio.ini` - Adafruit VEML7700 ライブラリを追加（`https://github.com/adafruit/Adafruit_VEML7700.git`）
 - `src/main.cpp` - VEML7700 の初期化、10秒ごとのデータ読み込み、シリアル出力を追加
-- `src/display_screens.cpp` - e-Paper の Ambience 画面に照度（Lux）とホワイトチャネル（White）を表示。画面12: Light（猫の目）で照度を絵にして表示
+- `src/display_screens.cpp` - 画面12: Light（猫の目）で照度を絵にして表示
 
 ## 🔌 ハードウェア接続
 
@@ -84,19 +84,7 @@ VEML7700 に関係する部分の抜粋です（値は実機・室内での例�
 
 ### e-paper ディスプレイ
 
-画面12「Light」に猫の目で、画面2「Ambience」に生の値で表示されます（どちらも 10 秒ごとに切り替わる画面の1つ）。猫の目の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
-
-Ambience の表示：
-
-```
-┌─────────────────────────┐
-│ Ambience                │
-│ Lux:   19lx             │  ← 照度（四捨五入）
-│ White: 49               │  ← ホワイトチャネル（生カウント）
-│ Sound: +12dB            │  ← MAX9814（補正後。値は例）
-│ Raw:   67dB             │  ← MAX9814（引く前の騒音レベル。値は例）
-└─────────────────────────┘
-```
+画面12「Light」に猫の目で表示されます（10 秒ごとに切り替わる画面の1つ）。猫の目の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。照度とホワイトチャネルの生の値は、シリアル出力で見られます。
 
 ## 🎚️ カスタマイズ
 
