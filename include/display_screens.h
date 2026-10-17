@@ -9,6 +9,7 @@
 #include "Custom_MAX9814.h"
 #include "Custom_MICS5524.h"
 #include "weather.h"
+#include "tide.h"
 
 // ============================================================================
 // 画面表示関数群
@@ -78,6 +79,10 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);
 // 画面12: Light（猫の目）
 // 明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面を黒くする。下に照度の数字
 void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled);
+
+// 画面13: Tide（潮汐。次の満潮・干潮の時刻と残り時間、今の4時間前〜20時間後の潮位の波、日の出・日の入り、潮回り）
+// 釣り場が未設定、まだ取得できていない、潮位が取れない地点、時刻が合う前は、その旨を出す
+void displayTide(const TideData& tide, bool has_location, bool wifi_connected, time_t now, bool synced);
 
 // 起動画面（main.cpp の setup で ロゴ → 反転したロゴ → 猿 の順に出す）
 // The-MenZ のロゴ。inverted なら黒地に白

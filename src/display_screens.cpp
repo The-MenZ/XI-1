@@ -2000,6 +2000,426 @@ void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled) {
 }
 
 // ============================================================================
+// 画面13: Tide（潮汐）
+// ============================================================================
+// 左上に次の満潮（干潮）の時刻を大きく出し、その上の行に「HIGH in 2h10m」と残り時間を出す。
+// 大きな時刻の右に、今の月の形と潮回り（大潮・中潮・小潮・長潮・若潮）。
+// 下は今の4時間前から20時間後までの潮位の波で、波の下を黒く塗って海にする。
+// 今の位置（三角と点線と水面の点）は左から1/6に止めて、波のほうが時間とともに左へ流れる。
+// これから来る満潮・干潮だけに時刻を書き、次に来るものは白黒を反転する（過ぎたものは今の線と重なるので書かない）。
+// 日の入りから日の出までの空は点々。日付が変わる位置は海の中に白い線を引き、線の下の端（海の底）に 0:00。
+// 画面の下の端に日の出（上向きの矢印）・日の入り（下向き）の時刻
+
+#define TIDE_X0 8                  // グラフの左端
+#define TIDE_W 184                 // グラフの幅（24時間）
+#define TIDE_PAST_SEC (4 * 3600L)  // 今より前に見せる時間
+#define TIDE_SKY_TOP 84            // 夜の点々を打つ範囲の上端
+#define TIDE_SEA_BOTTOM 182        // 海の下端
+#define TIDE_Y_HIGH 98             // 3日分でいちばん高い潮位の y
+#define TIDE_Y_LOW 160             // 3日分でいちばん低い潮位の y（下に干潮の時刻を書く余白を残す）
+#define TIDE_MIN_SPAN_CM 20        // 潮位の幅がこれより狭い地点でも、この幅で描く（小さな揺れを大きく見せない）
+#define TIDE_BOTTOM_Y 198          // 下の端の印の地平線の y（時刻のベースラインはその下 1px）
+#define TIDE_MOON_X 176          // 月の中心（大きな時刻の右。上の残り時間の行と重ならない高さ）
+#define TIDE_MOON_Y 38
+#define TIDE_MOON_R 13
+#define TIDE_KANJI_Y 55          // 潮回りの2文字（16×16）の上端。月の下に並べる
+#define TIDE_LABEL_H 16          // グラフの満潮・干潮の時刻の箱の高さ（helvB12）
+#define SYNODIC_MONTH 29.530588853f  // 月の満ち欠けの周期（日）
+#define SYNODIC_MONTH_SEC 2551443     // 同じ周期（秒）。月齢は整数の秒で割った余りから出す（double の計算を入れると Flash が増える）
+#define NEW_MOON_2000 947182440L      // 2000-01-06 18:14 UTC の新月
+
+// 潮回りの漢字（u8g2 の u8g2_font_b16_b_t_japanese1 から取り出した 16×16 の画像。1行2バイト）。
+// フォントは efont（The Electronic Font Open Laboratory。BSD ライセンス）。
+// 本体のフォントには日本語がないので、使う6文字だけを持つ（フォントごと入れると約48KB）
+enum { KANJI_DAI, KANJI_CHU, KANJI_SHO, KANJI_NAGA, KANJI_WAKA, KANJI_SHIO };
+static const uint8_t TIDE_KANJI[6][32] = {
+  {0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0xFF, 0xFF, 0x01, 0x80, 0x01, 0x80,
+   0x03, 0x40, 0x03, 0x40, 0x06, 0x60, 0x06, 0x60, 0x0C, 0x30, 0x18, 0x18, 0x30, 0x0C, 0xE0, 0x07},  // 大
+  {0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x7F, 0xFE, 0x61, 0x86, 0x61, 0x86, 0x61, 0x86, 0x61, 0x86,
+   0x61, 0x86, 0x7F, 0xFE, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80},  // 中
+  {0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x1B, 0x60, 0x1B, 0x30, 0x1B, 0x18,
+   0x33, 0x18, 0x33, 0x0C, 0x63, 0x0C, 0xC3, 0x0C, 0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x07, 0x00},  // 小
+  {0x00, 0x00, 0x0F, 0xFC, 0x0C, 0x00, 0x0F, 0xF8, 0x0C, 0x00, 0x0F, 0xF8, 0x0C, 0x00, 0x0C, 0x00,
+   0xFF, 0xFF, 0x0D, 0x18, 0x0D, 0x98, 0x0C, 0xD0, 0x0C, 0x60, 0x0D, 0xB0, 0x1E, 0x1C, 0x70, 0x07},  // 長
+  {0x18, 0x30, 0x18, 0x30, 0xFF, 0xFE, 0x18, 0x30, 0x1B, 0x30, 0x03, 0x00, 0x03, 0x00, 0xFF, 0xFE,
+   0x06, 0x00, 0x0C, 0x00, 0x0F, 0xF8, 0x1C, 0x18, 0x34, 0x18, 0x6C, 0x18, 0xCF, 0xF8, 0x00, 0x00},  // 若
+  {0x63, 0x00, 0x33, 0x3E, 0x3F, 0xF6, 0x03, 0x36, 0xCF, 0xD6, 0x6C, 0xDE, 0x6C, 0xD6, 0x0F, 0xD6,
+   0x0C, 0xD6, 0x34, 0xDE, 0x37, 0xD6, 0x63, 0x36, 0x6F, 0xF6, 0x63, 0x36, 0xC3, 0x66, 0xC3, 0x4E},  // 潮
+};
+
+// 旧暦の日（1〜30）ごとの潮回り（釣りの潮見表でよく使う表）
+static const uint8_t TIDE_NAMES[30] = {
+  KANJI_DAI, KANJI_DAI, KANJI_DAI, KANJI_CHU, KANJI_CHU, KANJI_CHU, KANJI_SHO, KANJI_SHO, KANJI_SHO, KANJI_NAGA,
+  KANJI_WAKA, KANJI_CHU, KANJI_CHU, KANJI_DAI, KANJI_DAI, KANJI_DAI, KANJI_DAI, KANJI_CHU, KANJI_CHU, KANJI_CHU,
+  KANJI_SHO, KANJI_SHO, KANJI_SHO, KANJI_NAGA, KANJI_WAKA, KANJI_CHU, KANJI_CHU, KANJI_CHU, KANJI_CHU, KANJI_DAI,
+};
+
+// グラフの x（左端が t0）と、その列の時刻
+static float tideX(time_t t, time_t t0) {
+  return TIDE_X0 + (float)(t - t0) * TIDE_W / 86400;
+}
+
+static time_t tideTimeAt(int16_t x, time_t t0) {
+  return t0 + (time_t)(x - TIDE_X0) * 86400 / TIDE_W;
+}
+
+// 時刻 t の潮位（cm）。1時間ごとの値を Catmull-Rom 曲線でなめらかにつなぐ（データの外なら false）
+static bool tideLevelAt(const TideData& tide, time_t t, float* level) {
+  if (t < tide.start) {
+    return false;
+  }
+  float u = (float)(t - tide.start) / 3600;
+  int i = (int)u;  // u は 0 以上なので切り捨て（floorf を入れると Flash が増える）
+  if (i + 1 >= tide.count) {
+    return false;
+  }
+  float f = u - i;
+  float p0 = tide.level_cm[max(i - 1, 0)], p1 = tide.level_cm[i];
+  float p2 = tide.level_cm[i + 1], p3 = tide.level_cm[min(i + 2, tide.count - 1)];
+  *level = p1 + 0.5f * f * (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
+  return true;
+}
+
+// 日の出から日の入りまでの間でなければ夜（日の出・日の入りがわからなければ夜にしない）
+static bool isTideNight(const TideData& tide, time_t t) {
+  bool known = false;
+  for (int d = 0; d < TIDE_DAYS; d++) {
+    if (tide.sunrise[d] == 0 || tide.sunset[d] == 0) {
+      continue;
+    }
+    known = true;
+    if (t >= tide.sunrise[d] && t < tide.sunset[d]) {
+      return false;
+    }
+  }
+  return known;
+}
+
+// 「18:30」の形の時刻（分は四捨五入）
+static void formatTideTime(time_t t, char* text, size_t size) {
+  t += 30;
+  struct tm tm;
+  localtime_r(&t, &tm);
+  snprintf(text, size, "%d:%02d", tm.tm_hour, tm.tm_min);
+}
+
+// 月（光っている側は白、影は黒）。満ちていくときは右側、欠けていくときは左側が光り、境目は楕円
+static void drawTideMoon(float age) {
+  float k = cosf(2 * PI * age / SYNODIC_MONTH);
+  bool waxing = age < SYNODIC_MONTH / 2;
+  for (int16_t dy = -TIDE_MOON_R; dy <= TIDE_MOON_R; dy++) {
+    float w = sqrtf((float)TIDE_MOON_R * TIDE_MOON_R - dy * dy);
+    int16_t left = lroundf(TIDE_MOON_X - w), right = lroundf(TIDE_MOON_X + w);
+    int16_t y = TIDE_MOON_Y + dy;
+    display.drawFastHLine(left, y, right - left + 1, GxEPD_BLACK);
+    // 幅が 0 以下の drawFastHLine は2点を結ぶ線になってしまうので、光っている幅があるときだけ描く
+    int16_t edge = lroundf(waxing ? TIDE_MOON_X + w * k : TIDE_MOON_X - w * k);
+    if (waxing && edge <= right) {
+      display.drawFastHLine(edge, y, right - edge + 1, GxEPD_WHITE);
+    } else if (!waxing && edge >= left) {
+      display.drawFastHLine(left, y, edge - left + 1, GxEPD_WHITE);
+    }
+  }
+  display.drawCircle(TIDE_MOON_X, TIDE_MOON_Y, TIDE_MOON_R, GxEPD_BLACK);
+}
+
+// 日の出・日の入りの印。地平線の上の半円と、その上に上向き（日の出）か下向き（日の入り）の矢印
+static void drawSunMark(int16_t x, bool rise) {
+  const int16_t y = TIDE_BOTTOM_Y;
+  for (int16_t dy = 0; dy <= 6; dy++) {
+    int16_t w = (int16_t)sqrtf(36 - dy * dy);
+    display.drawFastHLine(x - w, y - dy, 2 * w + 1, GxEPD_BLACK);
+  }
+  display.drawFastHLine(x - 8, y, 17, GxEPD_BLACK);
+  if (rise) {
+    display.fillTriangle(x - 5, y - 9, x + 5, y - 9, x, y - 14, GxEPD_BLACK);
+  } else {
+    display.fillTriangle(x - 5, y - 14, x + 5, y - 14, x, y - 9, GxEPD_BLACK);
+  }
+}
+
+// 「Tide」と、そのわけ（2行まで）
+static void printTideMessage(const char* line1, const char* line2) {
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(20, 80);
+  display.print("Tide");
+  display.setFont(&FreeSans9pt7b);
+  display.setCursor(20, 110);
+  display.print(line1);
+  if (line2 != nullptr) {
+    display.setCursor(20, 130);
+    display.print(line2);
+  }
+}
+
+void displayTide(const TideData& tide, bool has_location, bool wifi_connected, time_t now, bool synced) {
+  if (!has_location) {
+    printTideMessage("Set the fishing spot", "on the settings page");
+    return;
+  }
+  if (!tide.valid) {
+    printTideMessage(wifi_connected ? "Loading..." : "WiFi: Not Connected", nullptr);
+    return;
+  }
+  if (tide.no_sea) {
+    printTideMessage("No tide data here", "(too far from the sea)");
+    return;
+  }
+  if (!synced) {
+    printTideMessage("Waiting for the clock", nullptr);
+    return;
+  }
+
+  beginU8g2Fonts();
+  const time_t t0 = now - TIDE_PAST_SEC;
+  const time_t t1 = t0 + 86400;
+
+  // 潮位の y。3日分の最低〜最高を TIDE_Y_LOW〜TIDE_Y_HIGH に合わせる（流れても上下の目盛りが動かないように）
+  int16_t lo = tide.level_cm[0], hi = tide.level_cm[0];
+  for (int i = 1; i < tide.count; i++) {
+    lo = min(lo, tide.level_cm[i]);
+    hi = max(hi, tide.level_cm[i]);
+  }
+  if (hi - lo < TIDE_MIN_SPAN_CM) {
+    lo = (lo + hi - TIDE_MIN_SPAN_CM) / 2;
+    hi = lo + TIDE_MIN_SPAN_CM;
+  }
+  auto levelY = [&](float level) -> int16_t {
+    return lroundf(TIDE_Y_LOW - (level - lo) * (TIDE_Y_LOW - TIDE_Y_HIGH) / (hi - lo));
+  };
+
+  // ===== 夜の空の点々と、海 =====
+  for (int16_t x = TIDE_X0; x < TIDE_X0 + TIDE_W; x++) {
+    float level;
+    int16_t sea_top = TIDE_SEA_BOTTOM;
+    if (tideLevelAt(tide, tideTimeAt(x, t0), &level)) {
+      sea_top = levelY(level);
+      display.drawFastVLine(x, sea_top, TIDE_SEA_BOTTOM - sea_top, GxEPD_BLACK);
+    }
+    if (x % 4 == 0 && isTideNight(tide, tideTimeAt(x, t0))) {
+      for (int16_t y = TIDE_SKY_TOP; y < sea_top - 2; y += 4) {
+        display.drawPixel(x, y, GxEPD_BLACK);
+      }
+    }
+  }
+
+  // ===== 日付が変わる位置：海の中に白い線（0:00 の文字は、満潮・干潮の時刻の後で線の下の端に書く） =====
+  // 24時間の幅に 0:00 は1回だけ来る（mktime を使うと Flash が増えるので、t0 の時・分・秒から求める）
+  struct tm start;
+  localtime_r(&t0, &start);
+  time_t midnight = t0 + 86400 - (start.tm_hour * 3600L + start.tm_min * 60 + start.tm_sec);
+  int16_t midnight_x = -1;
+  float midnight_level;
+  if (midnight < t1 && tideLevelAt(tide, midnight, &midnight_level)) {
+    midnight_x = lroundf(tideX(midnight, t0));
+    int16_t top = levelY(midnight_level) + 3;  // 水面の線は切らない
+    display.fillRect(midnight_x - 1, top, 2, TIDE_SEA_BOTTOM - top, GxEPD_WHITE);
+  }
+
+  // ===== 今の位置：三角と、水面の点（白い縁の黒丸）と、点線（空では黒、海の中では白） =====
+  const int16_t now_x = lroundf(tideX(now, t0));
+  float now_level;
+  if (tideLevelAt(tide, now, &now_level)) {
+    int16_t now_y = levelY(now_level);
+    display.fillTriangle(now_x - 5, 77, now_x + 5, 77, now_x, 84, GxEPD_BLACK);
+    for (int16_t y = 87; y < now_y - 6; y += 5) {
+      display.fillRect(now_x - 1, y, 2, min(3, now_y - 6 - y), GxEPD_BLACK);
+    }
+    for (int16_t y = now_y + 7; y < TIDE_SEA_BOTTOM; y += 5) {
+      display.fillRect(now_x - 1, y, 2, min(3, TIDE_SEA_BOTTOM - y), GxEPD_WHITE);
+    }
+    display.fillCircle(now_x, now_y, 5, GxEPD_BLACK);
+    display.fillCircle(now_x, now_y, 3, GxEPD_WHITE);
+  }
+
+  // ===== これから来る満潮・干潮の時刻（満潮は山の上の空に、干潮は谷の下の海の中に書く） =====
+  const TideEvent* next = nullptr;
+  for (int i = 0; i < tide.event_count; i++) {
+    if (tide.events[i].time > now) {
+      next = &tide.events[i];
+      break;
+    }
+  }
+  char text[24];
+  setU8g2FontTransparent(u8g2_font_helvB12_tf);
+  // 時刻の箱が重ならないよう、満潮（空の側）と干潮（海の側）それぞれで、前に書いた箱の右端を覚えておく
+  int16_t last_right[2] = {0, 0};
+  int16_t low_boxes[TIDE_MAX_EVENTS][3];  // 干潮の箱の左・右・下（0:00 の文字と重ならないか見る）
+  int low_count = 0;
+  for (int i = 0; i < tide.event_count; i++) {
+    const TideEvent& event = tide.events[i];
+    float level;
+    if (event.time <= now || event.time > t1 || !tideLevelAt(tide, event.time, &level)) {
+      continue;
+    }
+    formatTideTime(event.time, text, sizeof(text));
+    int16_t w = u8g2Fonts.getUTF8Width(text) + 4;  // 左右に 2px の余白
+    int16_t x = lroundf(tideX(event.time, t0)) - w / 2;
+    x = max<int16_t>(x, max<int16_t>(now_x + 6, last_right[event.high] + 3));  // 今の線と、前の箱と重ならないように
+    x = min<int16_t>(x, TIDE_X0 + TIDE_W - w);
+    last_right[event.high] = x + w;
+    int16_t y = event.high ? levelY(level) - 5 - TIDE_LABEL_H : levelY(level) + 4;  // 箱の上端
+    if (!event.high) {
+      low_boxes[low_count][0] = x;
+      low_boxes[low_count][1] = x + w;
+      low_boxes[low_count][2] = y + TIDE_LABEL_H;
+      low_count++;
+    }
+    bool is_next = &event == next;
+    uint16_t color;
+    if (event.high) {
+      // 空の側は、夜の点々の上でも読めるよう白い箱にのせる（次に来るものは黒い箱に白い文字）
+      display.fillRoundRect(x, y, w, TIDE_LABEL_H, 3, is_next ? GxEPD_BLACK : GxEPD_WHITE);
+      color = is_next ? GxEPD_WHITE : GxEPD_BLACK;
+    } else {
+      // 海の中は白い文字（次に来るものは白い箱に黒い文字）
+      if (is_next) {
+        display.fillRoundRect(x, y, w, TIDE_LABEL_H, 3, GxEPD_WHITE);
+      }
+      color = is_next ? GxEPD_BLACK : GxEPD_WHITE;
+    }
+    u8g2Fonts.setForegroundColor(color);
+    u8g2Fonts.setCursor(x + 2, y + 14);
+    u8g2Fonts.print(text);
+  }
+
+  // ===== 0:00：白い線の下の端（海の底）に白い文字で書く =====
+  // 干潮の時刻と重なるときは書かない（線だけ）。今の線と重なるときは、今の線の横にずらす
+  if (midnight_x >= 0) {
+    int16_t w = u8g2Fonts.getUTF8Width("0:00");
+    int16_t tx = midnight_x - w / 2;
+    if (tx - 3 <= now_x + 2 && tx + w + 3 >= now_x - 2) {
+      tx = midnight_x < now_x ? now_x - 5 - w : now_x + 5;
+    }
+    tx = constrain(tx, TIDE_X0 + 1, TIDE_X0 + TIDE_W - 1 - w);
+    bool free = true;
+    for (int i = 0; i < low_count; i++) {
+      if (tx - 2 < low_boxes[i][1] && tx + w + 2 > low_boxes[i][0] &&
+          low_boxes[i][2] > TIDE_SEA_BOTTOM - TIDE_LABEL_H) {
+        free = false;
+      }
+    }
+    if (free) {
+      display.fillRect(tx - 2, TIDE_SEA_BOTTOM - TIDE_LABEL_H, w + 4, TIDE_LABEL_H, GxEPD_BLACK);  // 白い線を切る
+      u8g2Fonts.setForegroundColor(GxEPD_WHITE);
+      u8g2Fonts.setCursor(tx, TIDE_SEA_BOTTOM - 2);
+      u8g2Fonts.print("0:00");
+    }
+  }
+
+  // ===== 画面の下の端：日の出・日の入りの印と時刻 =====
+  // 時刻は印の右か左に書く。24時間の幅に印は多くて3つなので、右・左の組み合わせを全部試して、
+  // 画面に収まり、ほかの時刻や印と重ならない最初の組み合わせにする（なければ重なる時刻は書かない）
+  struct SunLabel {
+    int16_t x;   // 印の中心
+    int16_t w;   // 時刻の幅
+    bool rise;
+    char text[8];
+  };
+  SunLabel suns[TIDE_DAYS * 2];
+  int sun_count = 0;
+  for (int d = 0; d < TIDE_DAYS; d++) {
+    for (int k = 0; k < 2; k++) {
+      time_t t = k == 0 ? tide.sunrise[d] : tide.sunset[d];
+      if (t == 0 || t < t0 || t >= t1) {
+        continue;
+      }
+      SunLabel& sun = suns[sun_count++];
+      sun.x = lroundf(tideX(t, t0));
+      sun.rise = k == 0;
+      formatTideTime(t, sun.text, sizeof(sun.text));
+      sun.w = u8g2Fonts.getUTF8Width(sun.text);
+    }
+  }
+  auto sunTextX = [&](const SunLabel& sun, bool left) -> int16_t {
+    return left ? sun.x - 11 - sun.w : sun.x + 11;
+  };
+  // mask の i ビット目が 1 なら i 番目の時刻を左に書く。重なる組の数（はみ出しも1つと数える）を返す
+  auto countConflicts = [&](int mask) -> int {
+    int conflicts = 0;
+    for (int i = 0; i < sun_count; i++) {
+      int16_t a0 = sunTextX(suns[i], mask >> i & 1), a1 = a0 + suns[i].w;
+      if (a0 < 1 || a1 > 199) {
+        conflicts++;
+      }
+      for (int j = 0; j < sun_count; j++) {
+        if (j == i) continue;
+        int16_t b0 = sunTextX(suns[j], mask >> j & 1), b1 = b0 + suns[j].w;
+        bool hits_text = j > i && a0 < b1 + 4 && a1 + 4 > b0;
+        bool hits_mark = a0 < suns[j].x + 12 && a1 + 4 > suns[j].x - 8;
+        if (hits_text || hits_mark) {
+          conflicts++;
+        }
+      }
+    }
+    return conflicts;
+  };
+  int best_mask = 0, best_conflicts = 1000;
+  for (int mask = 0; mask < (1 << sun_count) && best_conflicts > 0; mask++) {
+    int c = countConflicts(mask);
+    if (c < best_conflicts) {
+      best_conflicts = c;
+      best_mask = mask;
+    }
+  }
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
+  for (int i = 0; i < sun_count; i++) {
+    drawSunMark(suns[i].x, suns[i].rise);
+    // 一番よい組み合わせでも重なるときは、その時刻だけ書かない
+    int16_t tx = sunTextX(suns[i], best_mask >> i & 1);
+    bool ok = tx >= 1 && tx + suns[i].w <= 199;
+    for (int j = 0; j < sun_count && ok; j++) {
+      if (j == i) continue;
+      int16_t b0 = sunTextX(suns[j], best_mask >> j & 1);
+      if ((j < i && tx < b0 + suns[j].w + 4 && tx + suns[i].w + 4 > b0) ||
+          (tx < suns[j].x + 12 && tx + suns[i].w + 4 > suns[j].x - 8)) {
+        ok = false;
+      }
+    }
+    if (ok) {
+      u8g2Fonts.setCursor(tx, TIDE_BOTTOM_Y + 1);
+      u8g2Fonts.print(suns[i].text);
+    }
+  }
+
+  // ===== 上：次の満潮（干潮）の時刻と残り時間 =====
+  if (next != nullptr) {
+    if (next->high) {
+      display.fillTriangle(4, 17, 20, 17, 12, 4, GxEPD_BLACK);
+    } else {
+      display.fillTriangle(4, 4, 20, 4, 12, 17, GxEPD_BLACK);
+    }
+    long minutes = (long)((next->time + 30) / 60 - now / 60);
+    const char* name = next->high ? "HIGH" : "LOW";
+    if (minutes >= 60) {
+      snprintf(text, sizeof(text), "%s in %ldh%02ldm", name, minutes / 60, minutes % 60);
+    } else {
+      snprintf(text, sizeof(text), "%s in %ldm", name, minutes);
+    }
+    setU8g2FontTransparent(u8g2_font_helvB14_tr);
+    u8g2Fonts.setCursor(25, 18);
+    u8g2Fonts.print(text);
+
+    // logisoso42 の「1」だけ字の左に 8px の余白がある（他の数字は 3px）ので、左端がそろうようずらす
+    formatTideTime(next->time, text, sizeof(text));
+    setU8g2FontTransparent(u8g2_font_logisoso42_tn);
+    u8g2Fonts.setCursor(text[0] == '1' ? -4 : 1, 66);
+    u8g2Fonts.print(text);
+  } else {
+    setU8g2FontTransparent(u8g2_font_helvB14_tr);
+    u8g2Fonts.setCursor(4, 18);
+    u8g2Fonts.print("No forecast");
+  }
+
+  // ===== 大きな時刻の右：月と潮回り（月齢から旧暦の日を出して決める） =====
+  float age = (float)((now - NEW_MOON_2000) % SYNODIC_MONTH_SEC) / 86400;
+  drawTideMoon(age);
+  int lunar_day = constrain((int)age, 0, 29);  // 0 = 旧暦の1日
+  display.drawBitmap(TIDE_MOON_X - 16, TIDE_KANJI_Y, TIDE_KANJI[TIDE_NAMES[lunar_day]], 16, 16, GxEPD_BLACK);
+  display.drawBitmap(TIDE_MOON_X, TIDE_KANJI_Y, TIDE_KANJI[KANJI_SHIO], 16, 16, GxEPD_BLACK);
+}
+
+// ============================================================================
 // 起動画面: The-MenZ のロゴと猿
 // ============================================================================
 // ロゴは「THE-」「MENZ」を四角だけで組んだ記号風の字。黒地に白で反転もできる。

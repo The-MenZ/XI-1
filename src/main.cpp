@@ -15,6 +15,7 @@
 #include "network.h"
 #include "web_settings.h"
 #include "weather.h"
+#include "tide.h"
 
 // ============================================================================
 // GxEPD2 用フォント定義
@@ -142,10 +143,11 @@ uint8_t pressure_history_count = 0;
 // 無効な画面はスキップして次の有効な画面を表示します
 // ============================================================================
 // 画面の番号は NVS に保存した screen_mask のビット位置なので、新しい画面は末尾に足す
-#define NUM_SCREENS 13
+#define NUM_SCREENS 14
 #define SCREEN_WIFI_QR 6
 #define SCREEN_SETTINGS_QR 8
 #define SCREEN_WEATHER 9
+#define SCREEN_TIDE 13
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
@@ -160,6 +162,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面10: Pressure (天気図風の H/L と等圧線)
   true,   // 画面11: Sound (レトロな VU メーター)
   true,   // 画面12: Light (猫の目)
+  true,   // 画面13: Tide (潮汐。釣り場は設定ページで入れる)
 };
 
 // 設定ページのチェックボックスに出す画面名
@@ -177,6 +180,7 @@ const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "Pressure（気圧 H/L）",
   "Sound（騒音 VU メーター）",
   "Light（照度 猫の目）",
+  "Tide（潮汐 釣り）",
 };
 
 uint16_t defaultScreenMask() {
@@ -528,6 +532,9 @@ void loop() {
   // 天気の取得（30分ごと、地域を変えたときはすぐ）
   weatherLoop();
 
+  // 釣り場の潮位と日の出・日の入りの取得（3時間ごと、釣り場を変えたときはすぐ）
+  tideLoop();
+
   // 切り替え間隔（既定10秒）ごとにセンサー値取得 & 画面更新
   if (current_time - last_update >= settings.interval_sec * 1000UL || first_display) {
     last_update = current_time;
@@ -848,6 +855,10 @@ void loop() {
         case 12:
           // Light（猫の目。明るいと瞳が細く、暗いとまんまる）
           displayLight(veml7700_data, sensor_veml7700_enabled);
+          break;
+        case SCREEN_TIDE:
+          // Tide（次の満潮・干潮と、今の4時間前〜20時間後の潮位の波）
+          displayTide(getTide(), hasTideLocation(), isWiFiConnected(), time(nullptr), isTimeSynced());
           break;
         default:
           // 無効な画面モード（デフォルトケース）

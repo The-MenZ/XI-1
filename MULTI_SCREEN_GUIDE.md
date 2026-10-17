@@ -2,11 +2,11 @@
 
 ## 📱 機能概要
 
-ESP32-C3 + e-paper ディスプレイが **13の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
+ESP32-C3 + e-paper ディスプレイが **14の画面を10秒ごと（設定ページで変更可）に自動切り替え**します。
 
-- 画面は `src/main.cpp` の `NUM_SCREENS`（= 13）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
+- 画面は `src/main.cpp` の `NUM_SCREENS`（= 14）で管理し、各画面の有効/無効は設定ページで変更する（NVS に保存。既定値は `SCREEN_DEFAULT_ENABLED[]`）
 - 無効な画面はスキップされ、次の有効な画面が表示される（`isScreenEnabled()` / `nextEnabledScreen()`）
-- デフォルトではすべての画面が有効（13画面をローテーション）
+- デフォルトではすべての画面が有効（14画面をローテーション）
 - AP モード中（WiFi に接続できないとき）は、画面6: WiFi QR と画面8: Settings QR だけを交互に表示する
 - 各画面の描画関数は `src/display_screens.cpp` にあり、センサーデータは引数で受け取る（→ `SENSOR_DATA_PASSING.md`）
 
@@ -41,11 +41,13 @@ ESP32-C3 + e-paper ディスプレイが **13の画面を10秒ごと（設定ペ
 │ 画面11: Sound           (MAX9814)           │
 │ ↓ 10秒                                      │
 │ 画面12: Light           (VEML7700)          │
+│ ↓ 10秒                                      │
+│ 画面13: Tide            (Open-Meteo Marine) │
 │ ↓ 10秒 (画面0へループ)                      │
 └─────────────────────────────────────────────┘
 ```
 
-画面番号は `display_mode` の値（0〜12）です。シリアル出力では `Screen 1/13`〜`Screen 13/13`（`display_mode + 1`）と表示されます。
+画面番号は `display_mode` の値（0〜13）です。シリアル出力では `Screen 1/14`〜`Screen 14/14`（`display_mode + 1`）と表示されます。
 
 ---
 
@@ -250,6 +252,17 @@ Raw:   67dB
 
 ---
 
+### 📱 **画面13: Tide（潮汐 釣り）** - `displayTide()`
+
+設定ページで入れた釣り場の潮を見せます。左上に次の満潮（▲）・干潮（▼）の時刻を大きく出し、その上の行に残り時間（例: `HIGH in 2h35m`）を出します。大きな時刻の右は今の月の形と潮回り（大潮・中潮・小潮・長潮・若潮）。下は今の4時間前から20時間後までの潮位の波で、今の位置（三角と点線と水面の点）は左に止めて、波が流れます。これから来る満潮・干潮には時刻を書き、日の入りから日の出までの空は点々にします。日付の変わり目は海の中の白い線と、その下の端の 0:00。画面の下の端に日の出・日の入りの時刻。
+
+- 潮位と日の出・日の入りは `TideData`（`src/tide.cpp` が Open-Meteo の Marine API から3時間ごとに取得）
+- 釣り場が未設定なら `Tide / Set the fishing spot / on the settings page`、海から遠い地点なら `Tide / No tide data here / (too far from the sea)` と表示
+
+詳細は `TIDE_SCREEN.md`。
+
+---
+
 ## 🔧 カスタマイズ
 
 ### 1. 画面の有効/無効を切り替える
@@ -259,7 +272,7 @@ Raw:   67dB
 保存する前（初回起動時・初期化後）の既定値は `src/main.cpp` の `SCREEN_DEFAULT_ENABLED` です。
 
 ```cpp
-#define NUM_SCREENS 13
+#define NUM_SCREENS 14
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
@@ -274,6 +287,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面10: Pressure (天気図風の H/L と等圧線)
   true,   // 画面11: Sound (レトロな VU メーター)
   true,   // 画面12: Light (猫の目)
+  true,   // 画面13: Tide (潮汐。釣り場は設定ページで入れる)
 };
 ```
 
@@ -283,7 +297,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 
 ### 3. 画面の順序を変更
 
-表示順は `display_mode` の番号順（0→12）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
+表示順は `display_mode` の番号順（0→13）です。順序を変えるには `loop()` 内の `switch(display_mode)` の `case` 番号を入れ替え、`SCREEN_DEFAULT_ENABLED` と `SCREEN_NAMES` の並びも合わせます。
 
 ### 4. 画面の追加
 
@@ -296,18 +310,18 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 void displayCustom(const AHT21Data& aht21_data, bool aht21_enabled);
 
 // main.cpp
-#define NUM_SCREENS 14
+#define NUM_SCREENS 15
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
-  // ... 既存の13画面 ...
-  true,   // 画面13: Custom
+  // ... 既存の14画面 ...
+  true,   // 画面14: Custom
 };
 const char* const SCREEN_NAMES[NUM_SCREENS] = {
-  // ... 既存の13画面 ...
+  // ... 既存の14画面 ...
   "Custom",
 };
 
 // loop() の switch 内
-case 13:
+case 14:
   displayCustom(aht21_data, sensor_aht21_enabled);
   break;
 ```

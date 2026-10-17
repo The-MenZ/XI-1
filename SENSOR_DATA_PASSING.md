@@ -51,6 +51,10 @@ void displayPressure(                                                         //
 );
 void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);     // 画面11
 void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled);   // 画面12
+void displayTide(                                                             // 画面13
+  const TideData& tide, bool has_location, bool wifi_connected,
+  time_t now, bool synced  // 今の時刻と、NTP で時刻が合っているか
+);
 ```
 
 ## 🧩 データ構造体（`include/Custom_*.h`）
@@ -258,11 +262,17 @@ switch(display_mode) {
     // Light 画面 - 照度のデータを渡す
     displayLight(veml7700_data, sensor_veml7700_enabled);
     break;
+
+  case SCREEN_TIDE:
+    // Tide 画面 - 釣り場の潮位と日の出・日の入り（tide.cpp が取得して保持）を渡す
+    displayTide(getTide(), hasTideLocation(), isWiFiConnected(), time(nullptr), isTimeSynced());
+    break;
 }
 ```
 
 - `isWiFiConnected()` は関数（`network.cpp`。`WiFi.status() == WL_CONNECTED` を返す）で、グローバル変数ではありません
 - 天気は `loop()` の先頭で呼ぶ `weatherLoop()`（`weather.cpp`）が取得して保持し、`getWeather()` で `WeatherData` を受け取ります。描画関数は通信をしません
+- 潮位も同じく `tideLoop()`（`tide.cpp`）が取得して保持し、`getTide()` で `TideData` を受け取ります
 - 時刻同期の判定は `isTimeSynced()`（`time(nullptr) > 1704067200`、つまり 2024-01-01 以降なら同期済み）
 - `temp_history` / `humid_history` は `HISTORY_SIZE`（144、`display_screens.h` で定義）要素のリングバッファで、10分ごとに保存されます。表示側の添字計算も同じ `HISTORY_SIZE` を使うので、件数を変えるときは定義を1か所変えるだけで済みます
 - 気圧の履歴 `pressure_history` は `main.cpp` の中だけで使う18件のリングバッファ（10分ごと、hPa×10 の整数）。表示側には `pressureTrend3h()` で計算した変化だけを渡します

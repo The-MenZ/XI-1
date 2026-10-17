@@ -22,6 +22,8 @@ struct Settings {
   String weather_lon;
   int16_t altitude_m;     // 設置場所の標高（m）。気圧を海面の高さに換算するのに使う
   int16_t mic_floor_db;   // 静かなときの騒音レベル（dB）。マイク基板のノイズの高さ。Sound 画面ではこれが 30dB になる
+  String tide_lat;        // 釣り場の緯度・経度（潮位と日の出・日の入りを取る地点。10進数の文字列のまま API に渡す。未設定なら空）
+  String tide_lon;
 };
 
 extern Settings settings;
@@ -29,6 +31,11 @@ extern Settings settings;
 // 天気の地域が設定されているか
 inline bool hasWeatherLocation() {
   return settings.weather_lat.length() > 0 && settings.weather_lon.length() > 0;
+}
+
+// 釣り場が設定されているか
+inline bool hasTideLocation() {
+  return settings.tide_lat.length() > 0 && settings.tide_lon.length() > 0;
 }
 
 // 画面切り替え間隔の範囲（秒）

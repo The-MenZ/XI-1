@@ -9,6 +9,7 @@
 - **WiFi + NTP**: インターネット接続による正確な時刻管理
 - **設定ページ**: WiFi に接続できないときは本体が AP になり、スマホや PC から WiFi や各種設定を変更できる
 - **天気予報**: 設定ページで選んだ地域の今の天気と、今日・明日の予報を表示（Open-Meteo。API キー不要）
+- **潮汐**: 設定ページで入れた釣り場の次の満潮・干潮と潮の動き、日の出・日の入り、潮回りを表示（Open-Meteo の Marine API）
 - **複数画面表示**: 10秒（設定ページで変更可）ごとに異なる情報を自動切り替え
 
 ---
@@ -121,10 +122,11 @@ graph TB
 | **10: Pressure** | 天気図風の H/L と等圧線（線の本数＝1013 hPa からの差）＋3時間の気圧の傾向 | BMP280 |
 | **11: Sound** | レトロな VU メーター（針は iPhone の騒音計アプリに合わせた dB。30〜80dB の目盛りで、70dB から右は黒い帯）。下に同じ数字 | MAX9814 |
 | **12: Light** | 猫の目（明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面が黒くなる）。下に照度の数字 | VEML7700 |
+| **13: Tide** | 次の満潮・干潮の時刻（大きく）と残り時間、今の4時間前〜20時間後の潮位の波（今の位置は左に止めて波が流れる）、日の出・日の入り、月の形と潮回り | Open-Meteo の Marine API（釣り場は設定ページで入れる） |
 
 起動時は The-MenZ のロゴ → 白黒反転したロゴ → 猿の線画の順に出してから、上の画面の切り替えに入る（`main.cpp` の `setup()`、絵は `drawBootLogo()` / `drawBootMonkey()`。ロゴは四角、猿は折れ線で描く）。
 
-画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
+画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md)、画面13の見方は [TIDE_SCREEN.md](TIDE_SCREEN.md) を参照。
 
 ---
 
@@ -153,6 +155,7 @@ graph TB
 | 画面 | 画面ごとの表示 ON/OFF、切り替え間隔（5〜3600秒、既定10秒） |
 | 時刻 | NTP サーバー（既定 `pool.ntp.org`）、タイムゾーン（POSIX 形式、既定 `JST-9`） |
 | 天気の地域 | 市区町村名で候補を探して選ぶ（例: 府中市 → 東京都 府中市 / 広島県 府中市。緯度・経度が入る）。緯度・経度の直接入力も可。空欄にすると未設定 |
+| 釣り場 | 潮汐画面の地点。「緯度, 経度」を1つの欄に入れる（Google マップで地点を長押しすると出る値を貼れる）。空欄にすると未設定。潮位を取得できているかも出す |
 | 気圧 | 設置場所の標高（−500〜4000 m、既定 0 m）。画面10の気圧を海面の高さに換算するのに使う |
 | 騒音 | 静かなときの騒音レベル（0〜100 dB、既定 55 dB）。マイク基板のノイズの高さで、画面11ではこれが 30dB になる。今の騒音レベル（本体が測った値）も出す |
 | ガスセンサー | 今の空気を基準値（Ro）として取り直す |
@@ -175,6 +178,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面10: Pressure
   true,   // 画面11: Sound
   true,   // 画面12: Light
+  true,   // 画面13: Tide
 };
 ```
 
@@ -239,6 +243,7 @@ platformio run --target upload
 - **再同期**: ESP-IDF が3時間ごとに自動更新
 - **TX Power**: 最小化設定 (11.5 dBm) で消費電力削減
 - **天気**: WiFi 接続中に30分ごと（失敗したら5分後、地域を変えたらすぐ）Open-Meteo から取得（詳しくは [WEATHER_SCREEN.md](./WEATHER_SCREEN.md)）
+- **潮位**: 釣り場が設定されていれば、WiFi 接続中に3時間ごと（失敗したら5分後、釣り場を変えたらすぐ）Open-Meteo の Marine API から取得（詳しくは [TIDE_SCREEN.md](./TIDE_SCREEN.md)）
 
 ---
 
@@ -251,7 +256,7 @@ platformio run --target upload
 初回フルリフレッシュ (約1.5秒)
   ↓
 切り替え間隔（既定10秒）ごとにセンサー読み込み → 画面更新 (部分リフレッシュ)
-  ↓                              （その合間に、天気の地域が設定されていれば30分ごとに天気を取得）
+  ↓                              （その合間に、天気の地域が設定されていれば30分ごとに天気を、釣り場が設定されていれば3時間ごとに潮位を取得）
 10分ごとにゴースト軽減のためフルリフレッシュ → ループ
 ```
 
@@ -286,6 +291,7 @@ platformio run --target upload
 - [WIFI_QR_SCREEN.md](./WIFI_QR_SCREEN.md) - WiFi QR コード画面
 - [MONTHDAY_SCREEN.md](./MONTHDAY_SCREEN.md) - 月日表示画面
 - [WEATHER_SCREEN.md](./WEATHER_SCREEN.md) - 天気画面と地域の設定
+- [TIDE_SCREEN.md](./TIDE_SCREEN.md) - 潮汐画面と釣り場の設定
 - [AVAILABLE_FONTS.md](./AVAILABLE_FONTS.md) - 使用できるフォント
 - [FONT_SYSTEM_ALTERNATIVES.md](./FONT_SYSTEM_ALTERNATIVES.md) - フォント方式の比較（U8g2 など）
 - [DISPLAY_REFACTORING.md](./DISPLAY_REFACTORING.md) - 画面コード分割の設計メモ（当時）
@@ -304,6 +310,8 @@ XI-1/
 │   ├── web_settings.cpp       # 設定ページ（Web サーバー）
 │   ├── settings.cpp           # 設定の NVS への保存・読み込み
 │   ├── weather.cpp            # 天気予報の取得（Open-Meteo）
+│   ├── tide.cpp               # 潮位と日の出・日の入りの取得（Open-Meteo の Marine API）
+│   ├── open_meteo.cpp         # Open-Meteo からの HTTP 取得と応答の読み取り（天気と潮位で共用）
 │   ├── Custom_ENS160.cpp      # 空気品質センサー
 │   ├── Custom_AHT21.cpp       # 温湿度センサー
 │   ├── Custom_BMP280.cpp      # 気圧センサー
@@ -318,6 +326,8 @@ XI-1/
 │   ├── web_settings.h         # 設定ページ
 │   ├── settings.h             # 設定（NVS）
 │   ├── weather.h              # 天気予報
+│   ├── tide.h                 # 潮位と日の出・日の入り
+│   ├── open_meteo.h           # Open-Meteo からの取得
 │   ├── adc_util.h             # ADC 電圧変換（eFuse 校正）
 │   ├── Custom_MAX9814.h       # マイク入力（ヘッダのみ）
 │   └── Custom_*.h             # センサーヘッダ
