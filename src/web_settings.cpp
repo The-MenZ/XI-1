@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include "network.h"
 #include "settings.h"
+#include "tide.h"
 
 // main.cpp で定義（NTP サーバーとタイムゾーンを settings から反映する）
 extern void applyTimeSettings();
@@ -128,6 +129,28 @@ static String soundLevelText() {
   return text + String(tenths / 10) + "." + String(tenths % 10) + " dB";
 }
 
+// 釣り場の潮位を取れているか（設定ページに出して、潮位が取れない地点を選んだまま気づかないのを防ぐ）
+static String tideStatusText() {
+  const TideData& tide = getTide();
+  if (!hasTideLocation()) {
+    return "未設定";
+  }
+  if (!tide.valid) {
+    return "まだ取得していません";
+  }
+  if (tide.no_sea) {
+    return "この地点では潮位が取れません（海から遠い地点です）";
+  }
+  if (tide.fetched_at == 0) {
+    return "取得済み";
+  }
+  struct tm t;
+  localtime_r(&tide.fetched_at, &t);
+  char text[40];
+  strftime(text, sizeof(text), "取得済み（%m/%d %H:%M）", &t);
+  return text;
+}
+
 static void handleRoot() {
   // WiFi 接続中に初めて開いたときは一覧が空なのでスキャンする
   // （AP 中は AP を立てる前にスキャン済み）
@@ -224,6 +247,15 @@ static void handleRoot() {
           "天気データ: <a href=https://open-meteo.com/>Open-Meteo.com</a></small>"
           "</fieldset>";
 
+  // 釣り場：Google マップで地点を長押しすると出る「緯度, 経度」をそのまま貼れるよう、1つの欄で受け付ける
+  String spot = hasTideLocation() ? settings.tide_lat + ", " + settings.tide_lon : String("");
+  html += "<fieldset><legend>釣り場（潮汐）</legend>"
+          "緯度, 経度<input type=text name=ts placeholder='35.4437, 139.6380' value=\"" + htmlEscape(spot) + "\">"
+          "<small>Google マップで地点を長押しすると出る「緯度, 経度」をそのまま貼れます。"
+          "空欄にすると未設定に戻ります。潮位: " + tideStatusText() +
+          "。潮位と日の出・日の入りのデータ: <a href=https://open-meteo.com/>Open-Meteo.com</a></small>"
+          "</fieldset>";
+
   // 気圧（Pressure 画面の H/L は海面の高さに換算した気圧で判定する）
   html += "<fieldset><legend>気圧</legend>"
           "設置場所の標高（m。建物の上の階なら階の高さも足す）<input type=number name=alt min=" +
@@ -317,6 +349,22 @@ static void handleSave() {
     settings.weather_place = place;
     settings.weather_lat = lat;
     settings.weather_lon = lon;
+  }
+
+  // 釣り場（「緯度, 経度」。空欄なら未設定に戻す。数値でなければ変更しない）
+  String spot = server.arg("ts");
+  spot.trim();
+  int comma = spot.indexOf(',');
+  String spot_lat = spot.substring(0, comma);
+  String spot_lon = spot.substring(comma + 1);
+  spot_lat.trim();
+  spot_lon.trim();
+  if (spot.length() == 0) {
+    settings.tide_lat = "";
+    settings.tide_lon = "";
+  } else if (comma > 0 && isCoordinate(spot_lat, 90) && isCoordinate(spot_lon, 180)) {
+    settings.tide_lat = spot_lat;
+    settings.tide_lon = spot_lon;
   }
 
   saveSettings();

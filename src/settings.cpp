@@ -47,6 +47,8 @@ void loadSettings(uint16_t default_screen_mask, uint8_t num_screens) {
   settings.weather_lon = prefs.getString("w_lon", "");
   settings.altitude_m = prefs.getShort("alt", DEFAULT_ALTITUDE_M);
   settings.mic_floor_db = prefs.getShort("mic_floor", DEFAULT_MIC_FLOOR_DB);
+  settings.tide_lat = prefs.getString("t_lat", "");
+  settings.tide_lon = prefs.getString("t_lon", "");
   prefs.end();
 
   settings.interval_sec = constrain(settings.interval_sec, INTERVAL_SEC_MIN, INTERVAL_SEC_MAX);
@@ -69,6 +71,8 @@ void saveSettings() {
   prefs.putString("w_lon", settings.weather_lon);
   prefs.putShort("alt", settings.altitude_m);
   prefs.putShort("mic_floor", settings.mic_floor_db);
+  prefs.putString("t_lat", settings.tide_lat);
+  prefs.putString("t_lon", settings.tide_lon);
   prefs.end();
 }
 

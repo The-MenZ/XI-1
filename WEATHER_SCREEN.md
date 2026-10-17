@@ -3,7 +3,7 @@
 設定ページで選んだ地域の天気を [Open-Meteo](https://open-meteo.com/) から取得し、e-Paper に表示します。
 
 - 描画: `src/display_screens.cpp` の `displayWeather()`
-- 取得: `src/weather.cpp` の `weatherLoop()`（`loop()` から毎回呼ぶ）
+- 取得: `src/weather.cpp` の `weatherLoop()`（`loop()` から毎回呼ぶ）。HTTP の取得と応答の読み取りは潮位と共用（`src/open_meteo.cpp`）
 - 地域の設定: 設定ページの「天気の地域」（`src/web_settings.cpp`）
 
 ---
