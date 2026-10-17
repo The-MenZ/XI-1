@@ -25,9 +25,13 @@ public:
     // 筐体内の発熱で室温より高く測れてしまう分（°C）を設定する
     void setTemperatureOffset(float offset) { temperature_offset = offset; }
 
+    // センサー自身が湿度を高く測ってしまう分（%、生値に対して）を設定する
+    void setHumidityOffset(float offset) { humidity_offset = offset; }
+
 private:
     Adafruit_AHTX0 aht;
     float temperature_offset = 0.0f;
+    float humidity_offset = 0.0f;
 };
 
 #endif // CUSTOM_AHT21_H
