@@ -27,9 +27,13 @@ AHT21Data CustomAHT21::read() {
     // 温度はオフセット分を引く
     data.temperature = data.raw_temperature - temperature_offset;
 
+    // 湿度はまずセンサー自身のずれを生値から引く（換算で約1.8倍に膨らむ前に直す）
+    float sensor_humidity = data.raw_humidity - humidity_offset;
+    if (sensor_humidity < 0.0f) sensor_humidity = 0.0f;
+
     // 相対湿度はセンサー自身の温度に対する値なので、温まっていると低く出る。
     // 空気中の水蒸気量は同じまま温度だけ下がったとして換算し直す
-    data.humidity = data.raw_humidity
+    data.humidity = sensor_humidity
                   * saturationVaporPressure(data.raw_temperature)
                   / saturationVaporPressure(data.temperature);
     if (data.humidity > 100.0f) data.humidity = 100.0f;

@@ -77,6 +77,10 @@ String getCurrentDateTime();
 // 温度からこの値を引き、湿度も同じ温度差で換算し直す
 #define AHT21_TEMP_OFFSET  10.0f
 
+// AHT21 の湿度の生値が高めに出る分（%）。換算前の生値から引く
+// 室温 27°C / 湿度 41% の温湿度計に合わせた値
+#define AHT21_HUMID_OFFSET  7.6f
+
 // ============================================================================
 // e-paper初期化: WeAct 1.54" 200x200 SSD1681
 // ============================================================================
@@ -261,6 +265,7 @@ void setup() {
   Serial.print("🌡️  AHT21を初期化中...");
   aht21.begin();
   aht21.setTemperatureOffset(AHT21_TEMP_OFFSET);
+  aht21.setHumidityOffset(AHT21_HUMID_OFFSET);
   // AHT21の有効性を確認（簡易版：存在すればOK）
   Wire.beginTransmission(0x38);
   if (Wire.endTransmission() == 0) {
