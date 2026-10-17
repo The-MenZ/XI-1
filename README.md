@@ -122,6 +122,8 @@ graph TB
 | **11: Sound** | レトロな VU メーター（針は iPhone の騒音計アプリに合わせた dB。30〜80dB の目盛りで、70dB から右は黒い帯）。下に同じ数字 | MAX9814 |
 | **12: Light** | 猫の目（明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面が黒くなる）。下に照度の数字 | VEML7700 |
 
+起動時は The-MenZ のロゴ → 白黒反転したロゴ → 猿の線画の順に出してから、上の画面の切り替えに入る（`main.cpp` の `setup()`、絵は `drawBootLogo()` / `drawBootMonkey()`。ロゴは四角、猿は折れ線で描く）。
+
 画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md) を参照。
 
 ---
