@@ -1084,6 +1084,42 @@ static void setU8g2FontTransparent(const uint8_t* font) {
 // ============================================================================
 // 画面7: Climate Modern (温度/湿度モダンデザイン)
 // ============================================================================
+// 上に温度と湿度の円形ゲージ（2重の輪）と、その中に大きな温度と湿度。下に24時間の折れ線グラフ
+
+// 円形ゲージ。輪は左下（135°）から時計回りに右下（405°）まで
+#define CM_CX 100
+#define CM_CY 75
+#define CM_ARC_START 135.0f
+#define CM_ARC_SPAN 270.0f
+#define CM_PEN_R 5     // 輪を描く丸いペンの半径（輪の太さは 2r+1 = 11px）
+#define CM_TEMP_R 65   // 温度の輪（外側）の中心線の半径（60〜70px）
+#define CM_HUMID_R 52  // 湿度の輪（内側）の中心線の半径（47〜57px。温度の輪との間を 2px あける）
+
+// 中央の温度の数字（logisoso42）と、右上の「°」
+#define CM_TEMP_BASELINE 90
+#define CM_TEMP_DIGIT_H 42  // 数字の高さ（ベースラインから上端まで）
+#define CM_DEGREE_R 5       // 「°」の外側の半径
+#define CM_DEGREE_PEN 3     // 「°」の線の太さ
+#define CM_DEGREE_GAP 3     // 数字と「°」の間
+
+// 半径 radius の輪を、丸いペン（半径 pen_r）で 0〜ratio の割合のところまでなぞる（ratio = 1 で輪の全体）。
+// 丸い端が輪の範囲（135°〜405°）からはみ出ないよう、ペンの中心は両端から CM_PEN_R だけ内側を通る
+static void drawClimateArc(int16_t radius, float ratio, int16_t pen_r, uint16_t color) {
+  float inset = (float)CM_PEN_R / radius * RAD_TO_DEG;
+  float a0 = CM_ARC_START + inset;
+  float a1 = a0 + (CM_ARC_SPAN - 2 * inset) * ratio;
+  int steps = (int)ceilf((a1 - a0) / 2);  // 2° ごとの線分
+  float px = CM_CX + radius * cosf(a0 * DEG_TO_RAD), py = CM_CY + radius * sinf(a0 * DEG_TO_RAD);
+  drawRoundLine(px, py, px, py, pen_r, color);  // ratio = 0 でも端の丸だけは出す
+  for (int i = 1; i <= steps; i++) {
+    float a = (a0 + (a1 - a0) * i / steps) * DEG_TO_RAD;
+    float x = CM_CX + radius * cosf(a), y = CM_CY + radius * sinf(a);
+    drawRoundLine(px, py, x, y, pen_r, color);
+    px = x;
+    py = y;
+  }
+}
+
 void displayClimateModern(
   const AHT21Data& aht21_data, bool aht21_enabled,
   const BMP280Data& bmp280_data, bool bmp280_enabled,
@@ -1115,94 +1151,49 @@ void displayClimateModern(
     temperature = bmp280_data.temperature;
   }
   
-  // 画面中心座標
-  int16_t centerX = 100;
-  int16_t centerY = 75;
-  
-  // ===== 円形ゲージ（アーチ）描画 =====
-  int16_t outerRadius = 70;
-  int16_t innerRadius = 60;
-  int16_t humidRadius = 60;  // 温度ゲージの内側と同じ（隙間なし）
-  int16_t humidInnerRadius = 50;
-  
-  float tempAngle = (temperature / 50.0) * 270.0;  // 0-50°Cを270度にマップ
-  float humidAngle = (humidity / 100.0) * 270.0;  // 0-100%を270度にマップ
-  
-  // 範囲制限
-  if (tempAngle < 0) tempAngle = 0;
-  if (tempAngle > 270) tempAngle = 270;
-  if (humidAngle < 0) humidAngle = 0;
-  if (humidAngle > 270) humidAngle = 270;
-  
-  // 外側の円弧（温度ゲージ背景・枠線のみ）
-  for (int angle = 135; angle <= 405; angle += 2) {
-    float rad = angle * PI / 180.0;
-    // 外周
-    int16_t x_outer = centerX + cos(rad) * outerRadius;
-    int16_t y_outer = centerY + sin(rad) * outerRadius;
-    display.drawPixel(x_outer, y_outer, GxEPD_BLACK);
-    // 内周
-    int16_t x_inner = centerX + cos(rad) * innerRadius;
-    int16_t y_inner = centerY + sin(rad) * innerRadius;
-    display.drawPixel(x_inner, y_inner, GxEPD_BLACK);
-  }
-  
-  // 温度ゲージ（黒ベタ・完全な塗りつぶし）
-  for (float angle = 135.0; angle <= 135.0 + tempAngle; angle += 0.5) {
-    float rad = angle * PI / 180.0;
-    int16_t x1 = centerX + cos(rad) * innerRadius;
-    int16_t y1 = centerY + sin(rad) * innerRadius;
-    int16_t x2 = centerX + cos(rad) * outerRadius;
-    int16_t y2 = centerY + sin(rad) * outerRadius;
-    display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
-    // さらに隣接する線も描画して完全に埋める
-    display.drawLine(x1+1, y1, x2+1, y2, GxEPD_BLACK);
-  }
-  
-  // 内側の円弧（湿度ゲージ背景・枠線のみ）
-  for (int angle = 135; angle <= 405; angle += 2) {
-    float rad = angle * PI / 180.0;
-    // 外周
-    int16_t x_outer = centerX + cos(rad) * humidRadius;
-    int16_t y_outer = centerY + sin(rad) * humidRadius;
-    display.drawPixel(x_outer, y_outer, GxEPD_BLACK);
-    // 内周
-    int16_t x_inner = centerX + cos(rad) * humidInnerRadius;
-    int16_t y_inner = centerY + sin(rad) * humidInnerRadius;
-    display.drawPixel(x_inner, y_inner, GxEPD_BLACK);
-  }
-  
-  // 湿度ゲージ（黒ベタ・完全な塗りつぶし）
+  // ===== 円形ゲージ（外側の輪が温度 0〜50°C、内側の輪が湿度 0〜100%） =====
+  // 輪は両端の丸い帯。細い枠の中を、今の値のところまで黒く塗る
+  float temp_ratio = constrain(temperature / 50.0f, 0.0f, 1.0f);
+  float humid_ratio = constrain(humidity / 100.0f, 0.0f, 1.0f);
+
+  drawClimateArc(CM_TEMP_R, 1.0f, CM_PEN_R, GxEPD_BLACK);
+  drawClimateArc(CM_TEMP_R, 1.0f, CM_PEN_R - 1, GxEPD_WHITE);
+  drawClimateArc(CM_TEMP_R, temp_ratio, CM_PEN_R, GxEPD_BLACK);
+
+  drawClimateArc(CM_HUMID_R, 1.0f, CM_PEN_R, GxEPD_BLACK);
+  drawClimateArc(CM_HUMID_R, 1.0f, CM_PEN_R - 1, GxEPD_WHITE);
   if (aht21_enabled) {
-    for (float angle = 135.0; angle <= 135.0 + humidAngle; angle += 0.5) {
-      float rad = angle * PI / 180.0;
-      int16_t x1 = centerX + cos(rad) * humidInnerRadius;
-      int16_t y1 = centerY + sin(rad) * humidInnerRadius;
-      int16_t x2 = centerX + cos(rad) * humidRadius;
-      int16_t y2 = centerY + sin(rad) * humidRadius;
-      display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
-      // さらに隣接する線も描画して完全に埋める
-      display.drawLine(x1+1, y1, x2+1, y2, GxEPD_BLACK);
-    }
+    drawClimateArc(CM_HUMID_R, humid_ratio, CM_PEN_R, GxEPD_BLACK);
   }
-  
+
   // ===== 中央の大きな温度表示 =====
   u8g2Fonts.setFontMode(0);
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
   u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
-  
+
   u8g2Fonts.setFont(u8g2_font_logisoso42_tn);  // 大きな数字フォント
-  
-  // 温度を整数で表示（小数点なし）
-  u8g2Fonts.setCursor(73, 90);
-  u8g2Fonts.print(lroundf(temperature));
-  
-  // 湿度を右側に表示
+
+  // 温度を整数で表示（小数点なし）。右上の「°」と合わせて輪の中央に置く
+  char temp_text[8];
+  snprintf(temp_text, sizeof(temp_text), "%ld", lroundf(temperature));
+  int16_t temp_w = u8g2Fonts.getUTF8Width(temp_text);
+  int16_t temp_x = CM_CX - (temp_w + CM_DEGREE_GAP + 2 * CM_DEGREE_R + 1) / 2;
+  u8g2Fonts.setCursor(temp_x, CM_TEMP_BASELINE);
+  u8g2Fonts.print(temp_text);
+
+  // 「°」はフォントに無いので、白い穴のあいた黒い丸で描く。上端を数字の上端にそろえる
+  int16_t degree_x = temp_x + temp_w + CM_DEGREE_GAP + CM_DEGREE_R;
+  int16_t degree_y = CM_TEMP_BASELINE - CM_TEMP_DIGIT_H + CM_DEGREE_R;
+  display.fillCircle(degree_x, degree_y, CM_DEGREE_R, GxEPD_BLACK);
+  display.fillCircle(degree_x, degree_y, CM_DEGREE_R - CM_DEGREE_PEN, GxEPD_WHITE);
+
+  // 湿度を温度の下の中央に表示（100% でも輪の両端にかからない）
   if (aht21_enabled) {
+    char humid_text[8];
+    snprintf(humid_text, sizeof(humid_text), "%d%%", humidity);
     u8g2Fonts.setFont(u8g2_font_helvB18_tf);
-    u8g2Fonts.setCursor(80, 120);
-    u8g2Fonts.print(humidity);
-    u8g2Fonts.print("%");
+    u8g2Fonts.setCursor(CM_CX - u8g2Fonts.getUTF8Width(humid_text) / 2, 120);
+    u8g2Fonts.print(humid_text);
   }
 
   // ===== 下部：過去24時間のグラフ（実データ） =====
