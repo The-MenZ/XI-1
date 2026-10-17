@@ -13,7 +13,7 @@
 
 | フォント | 種類 | 使用箇所 |
 |---------|------|---------|
-| `FreeMonoBold12pt7b` | Adafruit GFX | 全画面共通の既定フォント（`main.cpp` の `loop()` で設定）。Air Quality / Climate / Ambience / Gas Sensor 画面、Sound・Light の未接続時の表示 |
+| `FreeMonoBold12pt7b` | Adafruit GFX | 全画面共通の既定フォント（`main.cpp` の `loop()` で設定）。Air Quality / Climate / Gas Sensor 画面、Sound・Light の未接続時の表示 |
 | `FreeSans12pt7b` | Adafruit GFX | Settings QR・Weather・Tide の未接続／未取得時の表示、Sound の「dB」、Light の「lx」 |
 | `FreeSans18pt7b` | Adafruit GFX | Sound の補正後の数字 |
 | `FreeSans9pt7b` | Adafruit GFX | WiFi QR のエラー表示、Weather・Tide の未取得時の表示、Pressure の等圧線の気圧 |

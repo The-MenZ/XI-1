@@ -6,6 +6,7 @@
 #include <Fonts/FreeSans9pt7b.h>
 #include <qrcode.h>
 #include <U8g2_for_Adafruit_GFX.h>
+#include <new>
 
 // 他の画面で定義している描画の部品
 // 丸いペン（半径 r）で線を引く（画面5 の月日表示で定義）
@@ -365,57 +366,333 @@ void displayClimate(
 }
 
 // ============================================================================
-// 画面2: Ambience (視聴覚環境)
+// 画面2: Moon（天体写真のような月）
 // ============================================================================
-void displayAmbience(
-  const VEML7700Data& veml7700_data, bool veml7700_enabled,
-  const MAX9814Data& max9814_data, bool max9814_enabled
-) {
-  // タイトル
-  display.setCursor(2, 24);
-  display.println("Ambience");
-  
-  if (veml7700_enabled || max9814_enabled) {
-    // 行1: 照度
-    if (veml7700_enabled) {
-      display.setCursor(2, 56);
-      display.print("Lux:   ");
-      display.print(lroundf(veml7700_data.lux));
-      display.println("lx");
-      
-      // 行2: ホワイトチャネル（参考値）
-      display.setCursor(2, 88);
-      display.print("White: ");
-      display.print((int)veml7700_data.white);
-      display.println("");
-    } else {
-      display.setCursor(2, 56);
-      display.println("No Light");
-    }
-    
-    // 行3: iPhone の騒音計アプリに合わせた騒音（dB。静かなときが 30）
-    if (max9814_enabled) {
-      display.setCursor(2, 120);
-      display.print("Sound: ");
-      display.print(lroundf(max9814_data.db_phone));
-      display.println("dB");
+// 黒い空の真ん中に、今の満ち欠けの月を大きく描く（数字は出さない）。
+// 月の海・クレーター・ティコから出る光の筋は、画像を持たずに式で表す。1px ずつ明るさを計算して、
+// Atkinson の誤差拡散で白黒の点にする。影の側は、地球からの照り返し（地球照）をまばらな点で描く。
+// 時刻が合う前は、影だけの月（新月と同じ）に「?」を出す
 
-      // 行4: 本体が測った騒音レベル（静かにしたときのこの値を、設定ページの「静かなときの騒音レベル」に入れる）
-      display.setCursor(2, 152);
-      display.print("Raw:   ");
-      display.print(lroundf(max9814_data.db_level));
-      display.println("dB");
+#define MOON_CX 100
+#define MOON_CY 100
+#define MOON_R 86               // 月の半径（px）
+#define MOON_EARTHSHINE 10      // 地球照の点の割合（明るさ 256 の地面で 256×10/65536 ≈ 4%）
+#define MOON_CRATERS 60         // 小さなクレーターの数（位置と大きさは決まった種の乱数で作る）
+#define MOON_RAYS 14            // ティコから出る光の筋の数
+#define MOON_TYCHO_X -0.12f     // ティコの位置（月の半径を 1 とした値）
+#define MOON_TYCHO_Y 0.70f
+
+// 明るさは 256 = 1 の整数で計算する（ESP32-C3 は小数の計算を回路でできず、float で書くと描くのに約4.5秒かかった）
+#define MOON_MARE_EDGE 307      // 海の縁が終わる距離（楕円の 1.2 倍。256 = 楕円の縁）
+#define MOON_MARE_DARK 154      // いちばん暗い海で引く明るさ（0.6）
+#define MOON_CRATER_DARK 26     // クレーターの中で引く明るさ（0.10）
+#define MOON_CRATER_RIM 20      // クレーターの縁で足す明るさ（0.08）
+#define MOON_RAY_GAIN 56        // 光の筋の根もとで足す明るさ（0.22）
+#define MOON_ALBEDO_MAX 282     // 地面の明るさの上限（1.1）
+
+// 月の海。位置と半径は月の半径を 100 とした値（x は右、y は下。北半球から見た向き）、depth は暗さ（100 = いちばん暗い）
+struct MoonMare {
+  int8_t x, y, rx, ry, depth;
+};
+static const MoonMare MOON_MARIA[] = {
+  {70, -28, 13, 11, 95},   // 危機の海
+  {56, 12, 13, 20, 75},    // 豊かの海
+  {34, -8, 22, 16, 90},    // 静かの海
+  {12, -8, 8, 12, 70},     // 静かの海の西の張り出し
+  {20, -38, 17, 15, 75},   // 晴れの海
+  {33, 30, 9, 10, 75},     // 神酒の海
+  {-27, -44, 30, 24, 85},  // 雨の海
+  {-10, -74, 46, 8, 65},   // 氷の海
+  {-62, -20, 24, 38, 85},  // 嵐の大洋（北）
+  {-52, 12, 26, 24, 80},   // 嵐の大洋（南）
+  {-20, 34, 19, 14, 75},   // 雲の海
+  {-30, 14, 12, 10, 70},   // 既知の海
+  {-50, 40, 10, 10, 85},   // 湿りの海
+  {4, -20, 10, 8, 65},     // 蒸気の海
+  {0, -2, 7, 6, 50},       // 中央の入江
+  {-8, -28, 10, 8, 55},    // 雨の海と蒸気の海の間
+  {80, 30, 6, 12, 50},     // 東の縁の海
+};
+#define MOON_MARIA_N (sizeof(MOON_MARIA) / sizeof(MOON_MARIA[0]))
+
+// 明るいクレーター（ティコ・コペルニクス・ケプラー・アリスタルコス）。r は半径（月の半径を 100）、gain は足す明るさ（%）
+struct MoonSpot {
+  int8_t x, y, r, gain;
+};
+static const MoonSpot MOON_SPOTS[] = {{-12, 70, 5, 40}, {-28, -13, 4, 30}, {-52, -8, 3, 30}, {-68, -36, 3, 45}};
+
+// amp × sin(kx·x + ky·y + phase) の波（x, y は月の半径を 1 とした値、amp は 256 = 1）。
+// 前の MOON_WOBBLES 個は海の縁を波打たせ、残りは地面の明るさのむら
+struct MoonWave {
+  int8_t amp, kx, ky;
+  float phase;
+};
+#define MOON_WOBBLES 5
+static const MoonWave MOON_WAVES[] = {
+  {36, 7, 3, 0}, {26, -5, 11, 1.3f}, {18, 17, 13, 0.4f}, {13, 29, -23, 2.1f}, {10, 37, 41, 0.7f},
+  {8, 82, -16, 0.47f}, {8, 24, 78, -0.47f},
+};
+#define MOON_WAVES_N (sizeof(MOON_WAVES) / sizeof(MOON_WAVES[0]))
+
+// 星（x, y, 大きさ px）。月の外の四隅に置く
+static const uint8_t MOON_STARS[][3] = {
+  {8, 12, 2}, {30, 34, 1}, {60, 8, 1}, {176, 20, 1}, {192, 46, 2}, {14, 150, 1}, {40, 190, 2}, {168, 186, 1}, {190, 170, 1},
+};
+
+// 月と太陽の離角（ラジアン。0 = 新月、π/2 = 上弦、π = 満月、3π/2 = 下弦）
+// Meeus『天文計算』の簡単な式。平均の月齢に月の動きの主な揺れ6つを足す（ずれは時刻にして十数分以内）
+// 角度は 360° で割った余りにしない（sinf / cosf がそのまま扱える。fmodf を入れると Flash が約 450 バイト増える）
+static float moonElongation(time_t now) {
+  float days = (float)(now - 946728000L) / 86400;                // 2000-01-01 12:00 UTC からの日数
+  float d = (297.8502f + 12.19074912f * days) * DEG_TO_RAD;     // 平均の離角
+  float m = (357.5291f + 0.98560028f * days) * DEG_TO_RAD;      // 太陽の平均近点角
+  float mm = (134.9634f + 13.06499295f * days) * DEG_TO_RAD;    // 月の平均近点角
+  return d + (6.289f * sinf(mm) - 2.100f * sinf(m) + 1.274f * sinf(2 * d - mm) + 0.658f * sinf(2 * d) +
+              0.214f * sinf(2 * mm) + 0.110f * sinf(d)) * DEG_TO_RAD;
+}
+
+// 整数の平方根（切り捨て）
+static uint32_t isqrt32(uint32_t n) {
+  uint32_t root = 0, bit = 1UL << 30;
+  while (bit > n) bit >>= 2;
+  while (bit) {
+    if (n >= root + bit) {
+      n -= root + bit;
+      root = (root >> 1) + bit;
     } else {
-      display.setCursor(2, 120);
-      display.println("No Sound");
+      root >>= 1;
     }
-  } else {
-    display.setCursor(2, 56);
-    display.println("No");
-    display.setCursor(2, 88);
-    display.println("Ambience");
-    display.setCursor(2, 120);
-    display.println("Sensors");
+    bit >>= 2;
+  }
+  return root;
+}
+
+// 描くときだけ使う表と作業領域（約 3KB。スタックに置かず、描くたびに確保して返す）
+struct MoonWork {
+  int8_t sin_tab[256];         // sin（1周 = 256、振幅 127）
+  uint16_t dist_tab[164];      // 楕円の中の距離の2乗（65536 = 縁）を 1024 ごとに → 距離（256 = 縁）。2.56 倍の手前まで
+  uint8_t lit_tab[257];        // 光の強さ（256 = 1）→ その平方根（255 = 1）
+  struct {
+    int16_t x, y, reach_x, reach_y, depth;  // px、depth は 256 = 1
+    int32_t ax, ay;                          // 距離の2乗を 65536 = 縁 にする係数
+  } maria[MOON_MARIA_N];
+  struct {
+    int16_t x, y, r_out;
+    uint16_t r_in2, r_out2;  // 中心から r_in2 の内側は暗く、r_out2 までの輪は明るい
+  } craters[MOON_CRATERS];
+  int32_t ray_c[MOON_RAYS], ray_s[MOON_RAYS];  // 光の筋の向き（4096 = 1）
+  struct {
+    int16_t x, y;
+    int32_t reach2;  // 明るくする範囲（半径の 1.3 倍）の2乗（px）
+    float r;
+  } spots[sizeof(MOON_SPOTS) / sizeof(MOON_SPOTS[0])];
+  int32_t wave_inc[MOON_WAVES_N];              // 1px 右へ進んだときの波の位相の増え方（1周 = 2^24）
+  int16_t err_rows[3][2 * MOON_R + 4];          // Atkinson の誤差（今の行と次の2行。左に1つ、右に2つ余白）
+};
+
+// 月を描く（背景は黒く塗ってある前提で、白い点だけを打つ）
+static void drawRealMoon(float elongation) {
+  MoonWork* w = new (std::nothrow) MoonWork();
+  if (!w) return;
+  const float rs = MOON_R + 0.5f;           // 月の半径を 1 とするときの px
+  const float turn = 16777216 / (2 * PI);   // 波の位相の単位（1周 = 2^24）
+  // 太陽の向き（x は右、z は手前。16384 = 1）。満ちていくときは右から照らす
+  const int32_t sun_x = lroundf(sinf(elongation) * 16384), sun_z = lroundf(-cosf(elongation) * 16384);
+
+  for (int i = 0; i < 256; i++) {
+    w->sin_tab[i] = lroundf(sinf(i * 2 * PI / 256) * 127);
+  }
+  for (int i = 0; i < 164; i++) {
+    w->dist_tab[i] = lroundf(sqrtf((i + 0.5f) / 64) * 256);
+  }
+  for (int i = 0; i <= 256; i++) {
+    w->lit_tab[i] = min(255L, lroundf(sqrtf(i / 256.0f) * 256));
+  }
+  for (uint8_t k = 0; k < MOON_MARIA_N; k++) {
+    const MoonMare& m = MOON_MARIA[k];
+    float rx = m.rx * rs / 100, ry = m.ry * rs / 100;
+    auto& p = w->maria[k];
+    p.x = lroundf(m.x * rs / 100);
+    p.y = lroundf(m.y * rs / 100);
+    p.reach_x = ceilf(1.6f * rx);  // 縁の波（±0.4）を足しても、楕円の 1.6 倍より外は海に入らない
+    p.reach_y = ceilf(1.6f * ry);
+    p.depth = m.depth * 256 / 100;
+    p.ax = lroundf(65536 / (rx * rx));
+    p.ay = lroundf(65536 / (ry * ry));
+  }
+  // 小さなクレーターと光の筋は、決まった種の乱数で毎回同じ位置に作る
+  uint32_t seed = 7;
+  auto rnd = [&seed]() {
+    seed = seed * 1664525u + 1013904223u;
+    return (seed >> 8) / 16777216.0f;  // 0〜1
+  };
+  for (auto& c : w->craters) {
+    float r = (0.02f + 0.05f * rnd()) * MOON_R;
+    c.x = lroundf((rnd() * 1.8f - 0.9f) * MOON_R);
+    c.y = lroundf((rnd() * 1.8f - 0.9f) * MOON_R);
+    c.r_out = ceilf(1.1f * r);
+    c.r_in2 = lroundf(0.64f * r * r);
+    c.r_out2 = lroundf(1.21f * r * r);
+  }
+  for (int k = 0; k < MOON_RAYS; k++) {
+    float a = rnd() * 2 * PI;
+    w->ray_c[k] = lroundf(cosf(a) * 4096);
+    w->ray_s[k] = lroundf(sinf(a) * 4096);
+  }
+  const int16_t tycho_x = lroundf(MOON_TYCHO_X * rs), tycho_y = lroundf(MOON_TYCHO_Y * rs);
+  for (uint8_t k = 0; k < sizeof(MOON_SPOTS) / sizeof(MOON_SPOTS[0]); k++) {
+    auto& p = w->spots[k];
+    p.x = lroundf(MOON_SPOTS[k].x * rs / 100);
+    p.y = lroundf(MOON_SPOTS[k].y * rs / 100);
+    p.r = MOON_SPOTS[k].r * rs / 100;
+    p.reach2 = lroundf(1.69f * p.r * p.r);
+  }
+  const int32_t ray_len = lroundf(1.1f * rs * 4096);  // 光の筋の長さ（月の半径の 1.1 倍）
+  for (uint8_t k = 0; k < MOON_WAVES_N; k++) {
+    w->wave_inc[k] = lroundf(MOON_WAVES[k].kx / rs * turn);
+  }
+  const uint32_t rs2 = lroundf(rs * rs * 65536);  // 月の半径の2乗（px × 256 の2乗）
+  const int32_t band = lroundf(0.12f * rs * 256);  // 明暗の境目をぎざぎざにする幅
+  const int32_t jag = lroundf(0.035f * rs * 256);  // ぎざぎざの大きさ
+
+  int16_t* err0 = w->err_rows[0];
+  int16_t* err1 = w->err_rows[1];
+  int16_t* err2 = w->err_rows[2];
+
+  for (int16_t dy = -MOON_R; dy <= MOON_R; dy++) {
+    int16_t half = sqrtf(rs * rs - dy * dy);  // この行の月の幅の半分（px）
+
+    // この行に届く海とクレーターだけを残す
+    uint8_t maria[MOON_MARIA_N], n_maria = 0;
+    for (uint8_t k = 0; k < MOON_MARIA_N; k++) {
+      if (abs(dy - w->maria[k].y) < w->maria[k].reach_y) {
+        maria[n_maria++] = k;
+      }
+    }
+    uint8_t near[MOON_CRATERS], n_near = 0;
+    for (uint8_t k = 0; k < MOON_CRATERS; k++) {
+      if (abs(dy - w->craters[k].y) <= w->craters[k].r_out) {
+        near[n_near++] = k;
+      }
+    }
+    // 波は行の左端の位相だけを計算し、1px 右へ進むごとに足していく
+    uint32_t phase[MOON_WAVES_N];
+    for (uint8_t k = 0; k < MOON_WAVES_N; k++) {
+      const MoonWave& v = MOON_WAVES[k];
+      phase[k] = (uint32_t)(int32_t)lroundf((v.kx * -half / rs + v.ky * dy / rs + v.phase) * turn);
+    }
+
+    for (int16_t dx = -half; dx <= half; dx++) {
+      // ===== 地面の明るさ（256 = 明るい高地） =====
+      int32_t wob = 0, tex = 0;
+      for (uint8_t k = 0; k < MOON_WAVES_N; k++) {
+        int32_t v = MOON_WAVES[k].amp * w->sin_tab[(phase[k] >> 16) & 255] >> 7;
+        if (k < MOON_WOBBLES) {
+          wob += v;
+        } else {
+          tex += v;
+        }
+        phase[k] += w->wave_inc[k];
+      }
+      // 海は楕円の中ほど暗く、縁（楕円の 0.7〜1.2 倍）でなめらかに明るくなる。縁は波で崩す
+      int32_t mare = 0;
+      for (uint8_t i = 0; i < n_maria; i++) {
+        const auto& m = w->maria[maria[i]];
+        int32_t ex = dx - m.x, ey = dy - m.y;
+        if (abs(ex) >= m.reach_x) continue;
+        int32_t d2 = ex * ex * m.ax + ey * ey * m.ay;
+        if (d2 >= 164 << 10) continue;
+        int32_t t = (MOON_MARE_EDGE - w->dist_tab[d2 >> 10] - wob) * 2;
+        if (t > 0) {
+          mare = max(mare, m.depth * min(t, (int32_t)256) >> 8);
+        }
+      }
+      int32_t a = 256 - (mare * MOON_MARE_DARK >> 8) + tex;
+      for (uint8_t i = 0; i < n_near; i++) {
+        const auto& c = w->craters[near[i]];
+        int32_t ex = dx - c.x, ey = dy - c.y;
+        if (abs(ex) > c.r_out) continue;
+        int32_t e2 = ex * ex + ey * ey;
+        if (e2 < c.r_in2) {
+          a -= MOON_CRATER_DARK;
+        } else if (e2 < c.r_out2) {
+          a += MOON_CRATER_RIM;
+        }
+      }
+      // ティコから出る光の筋（太さは距離の 3%。遠いほど太く、薄くなる）
+      int32_t tx = dx - tycho_x, ty = dy - tycho_y;
+      for (uint8_t k = 0; k < MOON_RAYS; k++) {
+        int32_t along = tx * w->ray_c[k] + ty * w->ray_s[k];
+        if (along <= 0 || along >= ray_len) continue;
+        int32_t off = abs(tx * w->ray_s[k] - ty * w->ray_c[k]) * 100;
+        int32_t width = 3 * along;
+        if (off < width) {
+          a += MOON_RAY_GAIN * (width - off) / width * (ray_len - along) / ray_len;
+        }
+      }
+      for (uint8_t k = 0; k < sizeof(MOON_SPOTS) / sizeof(MOON_SPOTS[0]); k++) {
+        const auto& p = w->spots[k];
+        int32_t ex = dx - p.x, ey = dy - p.y, e2 = ex * ex + ey * ey;
+        if (e2 < p.reach2) {  // 当たるのは数百 px だけなので、ここは float で計算する
+          a += MOON_SPOTS[k].gain * 2.56f * (1.3f - sqrtf(e2) / p.r);
+        }
+      }
+      a = constrain(a, 0, MOON_ALBEDO_MAX);
+
+      // ===== 光の当たり方（px × 256） =====
+      int32_t z = isqrt32(rs2 - (uint32_t)(dx * dx + dy * dy) * 65536);  // 手前への高さ
+      int32_t mu = (dx * 256 * sun_x + z * sun_z) >> 14;                 // 太陽の光の向きへの高さ
+      if (abs(mu) < band) {
+        mu += jag * w->sin_tab[((40 * dy + 9 * dx) * 241 >> 9) & 255] >> 7;  // 明暗の境目は、山の影でぎざぎざにする
+      }
+      int16_t px = MOON_CX + dx, py = MOON_CY + dy;
+      int16_t col = dx + MOON_R + 1;  // 誤差の行の添字
+      if (mu > 0) {
+        // 月の地面は、斜めから照らされても暗くなりにくい（Lommel-Seeliger の式 2μ0 / (μ0 + μ)）。
+        // 点にすると暗く見えるので、平方根で持ち上げる
+        int32_t lit = w->lit_tab[min((int32_t)256, mu * 512 / (mu + z))];
+        int16_t v = min((int32_t)255, a * lit >> 8) + err0[col];
+        bool white = v >= 128;
+        if (white) {
+          display.drawPixel(px, py, GxEPD_WHITE);
+        }
+        // 誤差の 1/8 ずつを、右の2つ、下の行の3つ、2行下の1つに配る（Atkinson）
+        int16_t q = (v - (white ? 255 : 0)) / 8;
+        err0[col + 1] += q;
+        err0[col + 2] += q;
+        err1[col - 1] += q;
+        err1[col] += q;
+        err1[col + 1] += q;
+        err2[col] += q;
+      } else {
+        // 影の側は地球照。決まった並びの乱数で、地面の明るさに比例した割合だけ点を打つ
+        uint32_t h = px * 374761393u + py * 668265263u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        h ^= h >> 16;
+        if ((int32_t)(h & 0xFFFF) < a * MOON_EARTHSHINE) {
+          display.drawPixel(px, py, GxEPD_WHITE);
+        }
+      }
+    }
+
+    // 誤差の行を1つ進める
+    int16_t* done = err0;
+    err0 = err1;
+    err1 = err2;
+    err2 = done;
+    memset(err2, 0, sizeof(w->err_rows[0]));
+  }
+  delete w;
+}
+
+void displayMoon(time_t now, bool synced) {
+  display.fillScreen(GxEPD_BLACK);
+  for (const auto& s : MOON_STARS) {
+    display.fillRect(s[0], s[1], s[2], s[2], GxEPD_WHITE);
+  }
+  drawRealMoon(synced ? moonElongation(now) : 0);
+  if (!synced) {
+    drawGlyph(GLYPH_QUESTION, MOON_CX - 30, MOON_CY - 40, 60, 80, 8, 0, GxEPD_WHITE);
   }
 }
 

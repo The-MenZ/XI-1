@@ -30,10 +30,7 @@ void displayClimate(                                                          //
   const AHT21Data& aht21_data, bool aht21_enabled,
   const BMP280Data& bmp280_data, bool bmp280_enabled
 );
-void displayAmbience(                                                         // 画面2
-  const VEML7700Data& veml7700_data, bool veml7700_enabled,
-  const MAX9814Data& max9814_data, bool max9814_enabled
-);
+void displayMoon(time_t now, bool synced);                                    // 画面2
 void displayGasSensor(const MICS5524Data& mics5524_data, bool sensor_enabled);// 画面3
 void displayTime(int hour, int minute, bool synced);                          // 画面4
 void displayMonthDay(int month, int day);                                     // 画面5
@@ -196,8 +193,8 @@ switch(display_mode) {
     break;
     
   case 2:
-    // 視聴覚環境画面 - VEML7700 と MAX9814データを渡す
-    displayAmbience(veml7700_data, sensor_veml7700_enabled, max9814_data, sensor_max9814_enabled);
+    // 月の画面 - 今の時刻と、時刻が合っているかを渡す（満ち欠けは画面側で計算する）
+    displayMoon(time(nullptr), isTimeSynced());
     break;
     
   case 3:

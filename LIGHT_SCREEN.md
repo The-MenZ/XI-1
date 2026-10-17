@@ -87,7 +87,7 @@ case 12:
 
 VEML7700 がないときは `VEML7700 / Not / Connected` と表示します。
 
-画面2: Ambience の照度（`Lux`・`White`）の行は、生の値を見る用に残しています。
+照度の生の値を出していた画面2: Ambience は、画面2: Moon（[MOON_SCREEN.md](MOON_SCREEN.md)）に置き換えました。
 
 ---
 

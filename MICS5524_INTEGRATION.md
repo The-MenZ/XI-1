@@ -155,7 +155,7 @@ mics5524.calibrate();
 
 0. **Air Quality** - ENS160（eCO2/TVOC/AQI）
 1. **Climate** - AHT21/BMP280（温度/湿度/気圧/高度）
-2. **Ambience** - VEML7700/MAX9814（照度/騒音）
+2. **Moon** - 天体写真のような月（NTP 時刻から満ち欠けを計算）
 3. **Gas Sensor** - MICS5524（炭鉱のカナリアと RPG 風の HP ゲージ。ウォームアップ中は卵）
 4. **Time** - パタパタ時計（NTP 時刻の時と分）
 5. **Month Day** - 月日

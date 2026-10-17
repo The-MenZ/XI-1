@@ -151,7 +151,7 @@ uint8_t pressure_history_count = 0;
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality (空気質)
   true,   // 画面1: Climate (温熱環境)
-  true,   // 画面2: Ambience (視聴覚環境)
+  true,   // 画面2: Moon (天体写真のような月)
   true,   // 画面3: Gas Sensor (ガスセンサー)
   true,   // 画面4: Time (パタパタ時計)
   true,   // 画面5: Month Day (月日表示)
@@ -169,7 +169,7 @@ const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
 const char* const SCREEN_NAMES[NUM_SCREENS] = {
   "Air Quality（空気質）",
   "Climate（温熱環境）",
-  "Ambience（視聴覚環境）",
+  "Moon（月の満ち欠け）",
   "Gas Sensor（ガスセンサー）",
   "Time（時刻 パタパタ時計）",
   "Month Day（月日）",
@@ -801,7 +801,8 @@ void loop() {
           displayClimate(aht21_data, sensor_aht21_enabled, bmp280_data, sensor_bmp280_enabled);
           break;
         case 2:
-          displayAmbience(veml7700_data, sensor_veml7700_enabled, max9814_data, sensor_max9814_enabled);
+          // Moon（天体写真のような月。時刻が合う前は影だけの月に「?」）
+          displayMoon(time(nullptr), isTimeSynced());
           break;
         case 3:
           displayGasSensor(mics5524_data, sensor_mics5524_enabled);

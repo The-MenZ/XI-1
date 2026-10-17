@@ -111,7 +111,7 @@ graph TB
 |------|------|------------|
 | **0: Air Quality** | 大きな AQI の数字と星、換気をうながす上げ下げ窓（AQI 4 で少し、5 で全開に開く。起動後約3分はブラインド）。下に eCO2・TVOC | ENS160 |
 | **1: Climate** | 温度・湿度・気圧・高度 | AHT21・BMP280 |
-| **2: Ambience** | 照度・マイク音量 | VEML7700・MAX9814 |
+| **2: Moon** | 天体写真のような月（黒い空の真ん中に、今の満ち欠けの月を大きく描く。月の海・クレーター・地球照も点で描き、数字は出さない） | NTP同期（満ち欠けは時刻から計算） |
 | **3: Gas Sensor** | 炭鉱のカナリアと RPG 風の HP ゲージ（HP は Rs/Ro から計算。起動後3分間は卵） | MICS5524 |
 | **4: Time** | パタパタ時計（黒い札2枚に時と分。24時間表示で、時刻が合う前は「??」） | NTP同期 |
 | **5: Month Day** | 月日表示 | NTP同期 |
@@ -126,7 +126,7 @@ graph TB
 
 起動時は The-MenZ のロゴ → 白黒反転したロゴ → 猿の線画の順に出してから、上の画面の切り替えに入る（`main.cpp` の `setup()`、絵は `drawBootLogo()` / `drawBootMonkey()`。ロゴは四角、猿は折れ線で描く）。
 
-画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md)、画面13の見方は [TIDE_SCREEN.md](TIDE_SCREEN.md) を参照。
+画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面2の見方は [MOON_SCREEN.md](MOON_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md)、画面13の見方は [TIDE_SCREEN.md](TIDE_SCREEN.md) を参照。
 
 ---
 
@@ -167,7 +167,7 @@ graph TB
 const bool SCREEN_DEFAULT_ENABLED[NUM_SCREENS] = {
   true,   // 画面0: Air Quality
   true,   // 画面1: Climate
-  true,   // 画面2: Ambience
+  true,   // 画面2: Moon
   true,   // 画面3: Gas Sensor
   true,   // 画面4: Time
   true,   // 画面5: Month Day
@@ -222,7 +222,7 @@ platformio run --target upload
 - **用途**: 騒音レベル測定
 - **補正**: 本体が測った騒音レベルを、変換表で iPhone の騒音計アプリの dB に直す（[SOUND_SCREEN.md](SOUND_SCREEN.md) の「iPhone に合わせる」）。大きい音ほど MAX9814 の AGC で値が伸びなくなるので、差は一定ではない
   - 静かにしても、指でマイクの穴をふさいでも、騒音レベルは約 55dB から下がらない。下限を決めているのは部屋の静かさではなく、マイク基板のノイズ（[SOUND_SCREEN.md](SOUND_SCREEN.md) の「実機で測ったノイズ」）。このノイズの高さ（設定ページの「静かなときの騒音レベル」、既定 55dB）を 30dB として表示する
-  - 静かなときの騒音レベルは、静かにしたときの「今の騒音レベル」（設定ページか Ambience 画面の `Raw`）を見て決める。電源や配線、置き場所を変えたら決め直す
+  - 静かなときの騒音レベルは、静かにしたときの「今の騒音レベル」（設定ページに出る）を見て決める。電源や配線、置き場所を変えたら決め直す
 - **ハムのフィルタ**: 50Hz の電源のハム（と 100・150Hz）を切るため、200Hz のハイパスフィルタ（2次）をかけてから RMS を出す（[SOUND_SCREEN.md](SOUND_SCREEN.md) の「実機で測ったノイズ」）
 
 ### 💨 MICS5524 (ガスセンサー)
