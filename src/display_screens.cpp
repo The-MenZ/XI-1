@@ -2002,8 +2002,8 @@ void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled) {
 // ============================================================================
 // 画面13: Tide（潮汐）
 // ============================================================================
-// 上に次の満潮（干潮）の時刻を大きく出し、その上の小さな文字で「HIGH in 2h10m」と残り時間を出す。
-// 右上は今の月の形と潮回り（大潮・中潮・小潮・長潮・若潮）。
+// 左上に次の満潮（干潮）の時刻を大きく出し、その上の行に「HIGH in 2h10m」と残り時間を出す。
+// 大きな時刻の右に、今の月の形と潮回り（大潮・中潮・小潮・長潮・若潮）。
 // 下は今の4時間前から20時間後までの潮位の波で、波の下を黒く塗って海にする。
 // 今の位置（三角と点線と水面の点）は左から1/6に止めて、波のほうが時間とともに左へ流れる。
 // これから来る満潮・干潮だけに時刻を書き、次に来るものは白黒を反転する（過ぎたものは今の線と重なるので書かない）。
@@ -2018,9 +2018,11 @@ void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled) {
 #define TIDE_Y_LOW 160             // 3日分でいちばん低い潮位の y（下に干潮の時刻を書く余白を残す）
 #define TIDE_MIN_SPAN_CM 20        // 潮位の幅がこれより狭い地点でも、この幅で描く（小さな揺れを大きく見せない）
 #define TIDE_BOTTOM_Y 196          // 下の端の印の地平線の y（時刻のベースラインはその下 1px）
-#define TIDE_MOON_X 182          // 月の中心（下に潮回りの2文字を並べる。左の残り時間の文字と離す）
-#define TIDE_MOON_Y 24
+#define TIDE_MOON_X 176          // 月の中心（大きな時刻の右。上の残り時間の行と重ならない高さ）
+#define TIDE_MOON_Y 38
 #define TIDE_MOON_R 13
+#define TIDE_KANJI_Y 55          // 潮回りの2文字（16×16）の上端。月の下に並べる
+#define TIDE_LABEL_H 16          // グラフの満潮・干潮の時刻の箱の高さ（helvB12）
 #define SYNODIC_MONTH 29.530588853f  // 月の満ち欠けの周期（日）
 #define SYNODIC_MONTH_SEC 2551443     // 同じ周期（秒）。月齢は整数の秒で割った余りから出す（double の計算を入れると Flash が増える）
 #define NEW_MOON_2000 947182440L      // 2000-01-06 18:14 UTC の新月
@@ -2225,7 +2227,7 @@ void displayTide(const TideData& tide, bool has_location, bool wifi_connected, t
     }
   }
   char text[24];
-  setU8g2FontTransparent(u8g2_font_helvR08_tf);
+  setU8g2FontTransparent(u8g2_font_helvB12_tf);
   for (int i = 0; i < tide.event_count; i++) {
     const TideEvent& event = tide.events[i];
     float level;
@@ -2236,22 +2238,22 @@ void displayTide(const TideData& tide, bool has_location, bool wifi_connected, t
     int16_t w = u8g2Fonts.getUTF8Width(text) + 4;  // 左右に 2px の余白
     int16_t x = lroundf(tideX(event.time, t0)) - w / 2;
     x = constrain(x, now_x + 6, TIDE_X0 + TIDE_W - w);  // 今の線と重ならないように
-    int16_t y = event.high ? levelY(level) - 17 : levelY(level) + 4;  // 箱（高さ 12px）の上端
+    int16_t y = event.high ? levelY(level) - 5 - TIDE_LABEL_H : levelY(level) + 4;  // 箱の上端
     bool is_next = &event == next;
     uint16_t color;
     if (event.high) {
       // 空の側は、夜の点々の上でも読めるよう白い箱にのせる（次に来るものは黒い箱に白い文字）
-      display.fillRoundRect(x, y, w, 12, 3, is_next ? GxEPD_BLACK : GxEPD_WHITE);
+      display.fillRoundRect(x, y, w, TIDE_LABEL_H, 3, is_next ? GxEPD_BLACK : GxEPD_WHITE);
       color = is_next ? GxEPD_WHITE : GxEPD_BLACK;
     } else {
       // 海の中は白い文字（次に来るものは白い箱に黒い文字）
       if (is_next) {
-        display.fillRoundRect(x, y, w, 12, 3, GxEPD_WHITE);
+        display.fillRoundRect(x, y, w, TIDE_LABEL_H, 3, GxEPD_WHITE);
       }
       color = is_next ? GxEPD_BLACK : GxEPD_WHITE;
     }
     u8g2Fonts.setForegroundColor(color);
-    u8g2Fonts.setCursor(x + 2, y + 10);
+    u8g2Fonts.setCursor(x + 2, y + 14);
     u8g2Fonts.print(text);
   }
 
@@ -2259,6 +2261,7 @@ void displayTide(const TideData& tide, bool has_location, bool wifi_connected, t
   // 文字が重ならないよう、書いた範囲を覚えておき、0:00 は空いているときだけ書く
   int16_t used[TIDE_DAYS * 2][2];
   int used_count = 0;
+  setU8g2FontTransparent(u8g2_font_helvR08_tf);
   u8g2Fonts.setForegroundColor(GxEPD_BLACK);
   for (int d = 0; d < TIDE_DAYS; d++) {
     for (int k = 0; k < 2; k++) {
@@ -2302,9 +2305,9 @@ void displayTide(const TideData& tide, bool has_location, bool wifi_connected, t
   // ===== 上：次の満潮（干潮）の時刻と残り時間 =====
   if (next != nullptr) {
     if (next->high) {
-      display.fillTriangle(12, 28, 30, 28, 21, 15, GxEPD_BLACK);
+      display.fillTriangle(4, 17, 20, 17, 12, 4, GxEPD_BLACK);
     } else {
-      display.fillTriangle(12, 15, 30, 15, 21, 28, GxEPD_BLACK);
+      display.fillTriangle(4, 4, 20, 4, 12, 17, GxEPD_BLACK);
     }
     long minutes = (long)((next->time + 30) / 60 - now / 60);
     const char* name = next->high ? "HIGH" : "LOW";
@@ -2313,24 +2316,25 @@ void displayTide(const TideData& tide, bool has_location, bool wifi_connected, t
     } else {
       snprintf(text, sizeof(text), "%s in %ldm", name, minutes);
     }
-    setU8g2FontTransparent(u8g2_font_helvB12_tf);
-    u8g2Fonts.setCursor(35, 28);
+    setU8g2FontTransparent(u8g2_font_helvB14_tr);
+    u8g2Fonts.setCursor(25, 18);
     u8g2Fonts.print(text);
 
+    // logisoso42 の「1」だけ字の左に 8px の余白がある（他の数字は 3px）ので、左端がそろうようずらす
     formatTideTime(next->time, text, sizeof(text));
     setU8g2FontTransparent(u8g2_font_logisoso42_tn);
-    u8g2Fonts.setCursor(8, 74);
+    u8g2Fonts.setCursor(text[0] == '1' ? -4 : 1, 66);
     u8g2Fonts.print(text);
   } else {
-    setU8g2FontTransparent(u8g2_font_helvB12_tf);
-    u8g2Fonts.setCursor(12, 28);
+    setU8g2FontTransparent(u8g2_font_helvB14_tr);
+    u8g2Fonts.setCursor(4, 18);
     u8g2Fonts.print("No forecast");
   }
 
-  // ===== 右上：月と潮回り（月齢から旧暦の日を出して決める） =====
+  // ===== 大きな時刻の右：月と潮回り（月齢から旧暦の日を出して決める） =====
   float age = (float)((now - NEW_MOON_2000) % SYNODIC_MONTH_SEC) / 86400;
   drawTideMoon(age);
   int lunar_day = constrain((int)age, 0, 29);  // 0 = 旧暦の1日
-  display.drawBitmap(TIDE_MOON_X - 16, 41, TIDE_KANJI[TIDE_NAMES[lunar_day]], 16, 16, GxEPD_BLACK);
-  display.drawBitmap(TIDE_MOON_X, 41, TIDE_KANJI[KANJI_SHIO], 16, 16, GxEPD_BLACK);
+  display.drawBitmap(TIDE_MOON_X - 16, TIDE_KANJI_Y, TIDE_KANJI[TIDE_NAMES[lunar_day]], 16, 16, GxEPD_BLACK);
+  display.drawBitmap(TIDE_MOON_X, TIDE_KANJI_Y, TIDE_KANJI[KANJI_SHIO], 16, 16, GxEPD_BLACK);
 }
