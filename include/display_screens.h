@@ -84,4 +84,10 @@ void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled);
 // 釣り場が未設定、まだ取得できていない、潮位が取れない地点、時刻が合う前は、その旨を出す
 void displayTide(const TideData& tide, bool has_location, bool wifi_connected, time_t now, bool synced);
 
+// 起動画面（main.cpp の setup で ロゴ → 反転したロゴ → 猿 の順に出す）
+// The-MenZ のロゴ。inverted なら黒地に白
+void drawBootLogo(bool inverted);
+// 猿の線画
+void drawBootMonkey();
+
 #endif // DISPLAY_SCREENS_H

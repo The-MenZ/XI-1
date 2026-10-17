@@ -124,6 +124,8 @@ graph TB
 | **12: Light** | 猫の目（明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面が黒くなる）。下に照度の数字 | VEML7700 |
 | **13: Tide** | 次の満潮・干潮の時刻（大きく）と残り時間、今の4時間前〜20時間後の潮位の波（今の位置は左に止めて波が流れる）、日の出・日の入り、月の形と潮回り | Open-Meteo の Marine API（釣り場は設定ページで入れる） |
 
+起動時は The-MenZ のロゴ → 白黒反転したロゴ → 猿の線画の順に出してから、上の画面の切り替えに入る（`main.cpp` の `setup()`、絵は `drawBootLogo()` / `drawBootMonkey()`。ロゴは四角、猿は折れ線で描く）。
+
 画面0の見方は [AIR_QUALITY_SCREEN.md](AIR_QUALITY_SCREEN.md)、画面3の見方は [GAS_SCREEN.md](GAS_SCREEN.md)、画面4の見方は [TIME_SCREEN.md](TIME_SCREEN.md)、画面10の見方は [PRESSURE_SCREEN.md](PRESSURE_SCREEN.md)、画面11の見方は [SOUND_SCREEN.md](SOUND_SCREEN.md)、画面12の見方は [LIGHT_SCREEN.md](LIGHT_SCREEN.md)、画面13の見方は [TIDE_SCREEN.md](TIDE_SCREEN.md) を参照。
 
 ---
