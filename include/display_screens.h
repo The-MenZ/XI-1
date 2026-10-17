@@ -79,4 +79,10 @@ void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);
 // 明るいと瞳が縦に細く、暗いとまんまる。10,000 lx から上は目を細め、10 lx 未満は画面を黒くする。下に照度の数字
 void displayLight(const VEML7700Data& veml7700_data, bool sensor_enabled);
 
+// 起動画面（main.cpp の setup で ロゴ → 反転したロゴ → 猿 の順に出す）
+// The-MenZ のロゴ。inverted なら黒地に白
+void drawBootLogo(bool inverted);
+// 猿の線画
+void drawBootMonkey();
+
 #endif // DISPLAY_SCREENS_H

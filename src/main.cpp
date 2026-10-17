@@ -232,6 +232,19 @@ float pressureTrend3h(float pressure) {
   return pressure - pressure_history[pressure_history_index] / 10.0f;
 }
 
+// 起動画面を1枚出す（full なら白黒に点滅するフルリフレッシュ、そうでなければ部分リフレッシュ）
+void showBootScreen(void (*draw)(), bool full) {
+  if (full) {
+    display.setFullWindow();
+  } else {
+    display.setPartialWindow(0, 0, display.width(), display.height());
+  }
+  display.firstPage();
+  do {
+    draw();
+  } while (display.nextPage());
+}
+
 // 関数プロトタイプ宣言
 void printAQIStatus(uint8_t aqi);
 
@@ -385,36 +398,19 @@ void setup() {
   }
   Serial.println();
   
-  // e-paper 初期表示 - テストコード（シンプル）
+  // ===================================================================
+  // 起動画面: ロゴ → 白黒反転したロゴ → 猿
+  // ===================================================================
+  // ロゴは前の表示を消すためフルリフレッシュ、反転は部分リフレッシュでパッと切り替える。
+  // 猿は黒い画面の跡（ゴースト）が残らないようフルリフレッシュ。猿はネットワークの準備中も出しておく
+  Serial.println("\n📺 起動画面を表示中...");
   delay(500);
-  
-  Serial.println("\n📺 e-paper に背景色を表示中...");
-  
-  display.setFullWindow();
-  display.firstPage();
-  do {
-    // 単純にホワイトで塗りつぶす
-    display.fillScreen(GxEPD_WHITE);
-  } while (display.nextPage());
-  
-  Serial.println("   ✅ 背景（白）表示完了");
-  delay(2000);
-  
-  Serial.println("\n📺 e-paper にテキストを表示中...");
-  
-  display.setPartialWindow(0, 0, display.width(), display.height());
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    display.setFont(&FreeMonoBold12pt7b);
-    display.setCursor(10, 50);
-    display.println("TEST");
-    display.setCursor(10, 100);
-    display.println("SCREEN");
-  } while (display.nextPage());
-  
-  Serial.println("   ✅ テキスト表示完了");
+  showBootScreen([] { drawBootLogo(false); }, true);
+  delay(1000);
+  showBootScreen([] { drawBootLogo(true); }, false);
+  delay(1000);
+  showBootScreen(drawBootMonkey, true);
+  Serial.println("   ✅ 起動画面表示完了");
   delay(2000);
 
   // ===================================================================
