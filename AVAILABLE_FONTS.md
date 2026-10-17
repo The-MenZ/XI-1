@@ -20,7 +20,7 @@
 | `u8g2_font_logisoso42_tn` | U8g2 | Climate Modern の温度、Weather の今の気温（大きな数字） |
 | `u8g2_font_helvB18_tf` | U8g2 | Climate Modern の湿度、Pressure の気圧と3時間の変化、Sound の文字盤の「dB」 |
 | `u8g2_font_helvB12_tf` | U8g2 | Weather の天気の名前・°C・日付・最高/最低気温 |
-| `u8g2_font_helvR08_tf` | U8g2 | Climate Modern のグラフラベル（TEMP / HUMIDITY）、Weather の取得時刻・降水確率、Pressure の「3h」、Sound の目盛りの数字 |
+| `u8g2_font_helvR08_tf` | U8g2 | Weather の取得時刻・降水確率、Pressure の「3h」、Sound の目盛りの数字 |
 
 ※ Month Day 画面の数字はフォントを使わず、`display_screens.cpp` の中で直線と楕円弧を丸いペンでなぞって描いています（`MONTHDAY_SCREEN.md` 参照）。Air Quality の AQI、Time のパタパタ時計、Light の照度の数字も、同じ描き方です。
 ※ `main.cpp` は `FreeMonoBold12pt7b` だけを読み込み、ほかのフォントは `display_screens.cpp` で読み込みます（下の注意事項を参照）。
@@ -173,7 +173,7 @@ u8g2Fonts.print("%");
 | `u8g2_font_logisoso42_tn` | 高さ 42px の数字（`_tn` = 数字と一部記号のみ） | 温度の大きな数字 |
 | `u8g2_font_helvB18_tf` | Helvetica Bold 18（`_tf` = ASCII＋Latin-1） | 湿度 |
 | `u8g2_font_helvB12_tf` | Helvetica Bold 12（`_tf`） | 天気画面の文字（`°` を含む） |
-| `u8g2_font_helvR08_tf` | Helvetica Regular 8（`_tf`） | グラフのラベル、天気画面の小さい文字 |
+| `u8g2_font_helvR08_tf` | Helvetica Regular 8（`_tf`） | 天気・気圧・騒音画面の小さい文字 |
 
 - **`setFont()` はフォントが変わるたびに `setFontMode(0)`（背景を塗る）に戻します。** 背景を塗らない画面では、`display_screens.cpp` の `setU8g2FontTransparent()` でフォントを変えます（`setFont()` の後に `setFontMode(1)` を呼ぶ）。`setFontMode(1)` を `setFont()` より前に呼ぶと効かず、背景の色を決めていなければ初期値の 0 で塗られます。e-Paper では 0 が黒なので、文字の枠が黒い四角になります（Sound 画面の「dB」が黒い四角2つになっていた。Weather と Pressure も同じ書き方だった）
 - 同じ名前のフォントは U8g2 ライブラリ（`olikraus/U8g2`）にもあり、実際にリンクされるのは U8g2 側のデータです（`firmware.map` で確認）。どちらのデータでも表示は同じです

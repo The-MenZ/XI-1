@@ -5,7 +5,7 @@
 このドキュメントの後半（導入前の検討）では「U8g2 フォントは GxEPD2 で直接使えない／変換が必要」と結論していましたが、現在は **[U8g2_for_Adafruit_GFX](https://github.com/olikraus/U8g2_for_Adafruit_GFX)**（olikraus 作）を使い、**フォント変換なしで U8g2 フォントを GxEPD2 の画面に描画**しています。GxEPD2 の `display` は Adafruit GFX の派生クラスなので、そのまま渡せます。
 
 - **ライブラリ**: `platformio.ini` の `lib_deps` に `https://github.com/olikraus/U8g2_for_Adafruit_GFX.git`（`olikraus/U8g2` も記載あり）
-- **本番コード**: `src/display_screens.cpp` の `displayClimateModern()`（画面7: Climate Modern）で `u8g2_font_logisoso42_tn` / `u8g2_font_helvB18_tf` / `u8g2_font_helvR08_tf`、`displayWeather()`（画面9: Weather）で `u8g2_font_logisoso42_tn` / `u8g2_font_helvB12_tf` / `u8g2_font_helvR08_tf`、`displayPressure()`（画面10: Pressure）で `u8g2_font_helvB18_tf` / `u8g2_font_helvR08_tf` を使用
+- **本番コード**: `src/display_screens.cpp` の `displayClimateModern()`（画面7: Climate Modern）で `u8g2_font_logisoso42_tn` / `u8g2_font_helvB18_tf`、`displayWeather()`（画面9: Weather）で `u8g2_font_logisoso42_tn` / `u8g2_font_helvB12_tf` / `u8g2_font_helvR08_tf`、`displayPressure()`（画面10: Pressure）で `u8g2_font_helvB18_tf` / `u8g2_font_helvR08_tf` を使用
 - **テストスケッチ**: `src/u8g2_gfx_font_test.cpp`（日本語フォント `u8g2_font_b16_t_japanese3` / `u8g2_font_b16_b_t_japanese3` の表示テストと、Climate Modern の試作画面）。専用環境 `esp32-c3-super-mini-k2-u8g2gfx` でビルドし、メイン環境 `esp32-c3-super-mini-k2` では `build_src_filter` で除外
 - **その他の画面**: 従来どおり Adafruit GFX フォント（`FreeMonoBold12pt7b` など）
 

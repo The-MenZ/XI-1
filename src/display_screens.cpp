@@ -1084,7 +1084,7 @@ static void setU8g2FontTransparent(const uint8_t* font) {
 // ============================================================================
 // 画面7: Climate Modern (温度/湿度モダンデザイン)
 // ============================================================================
-// 上に温度と湿度の円形ゲージ（2重の輪）と、その中に大きな温度と湿度。下に24時間の折れ線グラフ
+// 上に温度と湿度の円形ゲージ（2重の輪）と、その中に大きな温度と湿度。下に24時間の棒グラフ（1時間ごとに1本）
 
 // 円形ゲージ。輪は左下（135°）から時計回りに右下（405°）まで
 #define CM_CX 100
@@ -1102,6 +1102,20 @@ static void setU8g2FontTransparent(const uint8_t* font) {
 #define CM_DEGREE_PEN 3     // 「°」の線の太さ
 #define CM_DEGREE_GAP 3     // 数字と「°」の間
 
+// 下の棒グラフ。1時間（履歴6点）の平均を1本にして24本。幅 6px の棒を 8px おきに並べる
+// 真ん中のすき間（y = 162〜165）から、上へ温度の黒い棒、下へ湿度の白抜きの棒を伸ばす
+#define CM_BARS 24
+#define CM_SAMPLES_PER_BAR (HISTORY_SIZE / CM_BARS)
+#define CM_BAR_X 5               // 左端の棒の左端（右端の棒の右端は 194）
+#define CM_BAR_PITCH 8
+#define CM_BAR_W 6
+#define CM_TEMP_BAR_BOTTOM 161   // 温度の棒の下端。棒の高さは 4〜30px（上端は 132〜158）
+#define CM_TEMP_BAR_MIN_H 4
+#define CM_TEMP_BAR_RANGE 26
+#define CM_HUMID_BAR_TOP 166     // 湿度の棒の上端。棒の長さは 3〜27px（下端は 168〜192）
+#define CM_HUMID_BAR_MIN_H 3
+#define CM_HUMID_BAR_RANGE 24
+
 // 半径 radius の輪を、丸いペン（半径 pen_r）で 0〜ratio の割合のところまでなぞる（ratio = 1 で輪の全体）。
 // 丸い端が輪の範囲（135°〜405°）からはみ出ないよう、ペンの中心は両端から CM_PEN_R だけ内側を通る
 static void drawClimateArc(int16_t radius, float ratio, int16_t pen_r, uint16_t color) {
@@ -1117,6 +1131,25 @@ static void drawClimateArc(int16_t radius, float ratio, int16_t pen_r, uint16_t 
     drawRoundLine(px, py, x, y, pen_r, color);
     px = x;
     py = y;
+  }
+}
+
+// 棒の値（has が true のものだけ）の最小〜最大に余白 pad を足した範囲を lo〜hi に入れる。
+// 幅が min_span より狭いときは、真ん中を中心に min_span まで広げる（変化が小さくても棒がガタガタしないように）
+static void climateBarRange(const float* values, const bool* has, float pad, float min_span, float& lo, float& hi) {
+  lo = 1e9f;
+  hi = -1e9f;
+  for (int k = 0; k < CM_BARS; k++) {
+    if (!has[k]) continue;
+    if (values[k] < lo) lo = values[k];
+    if (values[k] > hi) hi = values[k];
+  }
+  lo -= pad;
+  hi += pad;
+  if (hi - lo < min_span) {
+    float mid = (lo + hi) / 2;
+    lo = mid - min_span / 2;
+    hi = mid + min_span / 2;
   }
 }
 
@@ -1196,117 +1229,49 @@ void displayClimateModern(
     u8g2Fonts.print(humid_text);
   }
 
-  // ===== 下部：過去24時間のグラフ（実データ） =====
-  int16_t graphY = 135;
-  int16_t graphHeight = 25;
-  int16_t graphWidth = 180;
-  int16_t graphX = 10;
-  
-  // ========== 温度グラフ ==========
-  // "TEMP" ラベル（常に表示）
-  u8g2Fonts.setFont(u8g2_font_helvR08_tf);
-  u8g2Fonts.setCursor(graphX, graphY - 5);
-  u8g2Fonts.print("TEMP");
-  
-  // グリッド線（常に表示）
-  for (int i = 0; i <= 2; i++) {
-    int16_t y = graphY + i * (graphHeight / 2);
-    for (int x = graphX; x < graphX + graphWidth; x += 4) {
-      display.drawPixel(x, y, GxEPD_BLACK);
+  // ===== 下部：過去24時間の棒グラフ =====
+  // 1時間ごとの平均を1本にする。右端の棒が直近1時間で、k 本目は (CM_BARS - 1 - k) 時間前
+  float temp_bar[CM_BARS], humid_bar[CM_BARS];
+  bool has_bar[CM_BARS];
+  bool any_bar = false;
+  for (int k = 0; k < CM_BARS; k++) {
+    float temp_sum = 0, humid_sum = 0;
+    int n = 0;
+    for (int j = 0; j < CM_SAMPLES_PER_BAR; j++) {
+      int age = (CM_BARS - 1 - k) * CM_SAMPLES_PER_BAR + j;  // 0 = いちばん新しい点
+      if (age >= history_count) break;
+      int idx = (history_index - 1 - age + HISTORY_SIZE) % HISTORY_SIZE;
+      temp_sum += temp_history[idx];
+      humid_sum += humid_history[idx];
+      n++;
+    }
+    has_bar[k] = n > 0;
+    if (n > 0) {
+      temp_bar[k] = temp_sum / n;
+      humid_bar[k] = humid_sum / n;
+      any_bar = true;
     }
   }
-  
-  if (history_count >= 2) {  // データがある場合のみ折れ線を描画
-    
-    // 温度の最小・最大を計算（動的範囲）
-    float temp_min = temp_history[0];
-    float temp_max = temp_history[0];
-    for (int i = 0; i < history_count; i++) {
-      if (temp_history[i] < temp_min) temp_min = temp_history[i];
-      if (temp_history[i] > temp_max) temp_max = temp_history[i];
-    }
-    
-    // グラフ範囲に±2°Cの余白を追加
-    float graph_temp_min = temp_min - 2.0;
-    float graph_temp_max = temp_max + 2.0;
-    
-    // 温度変化がほとんどない場合の対処
-    if (graph_temp_max - graph_temp_min < 5.0) {
-      float temp_avg = (temp_min + temp_max) / 2.0;
-      graph_temp_min = temp_avg - 5.0;
-      graph_temp_max = temp_avg + 5.0;
-    }
-    
-    // 0°Cラインを強調表示（範囲内にある場合）
-    if (graph_temp_min <= 0.0 && graph_temp_max >= 0.0) {
-      // 0°CのY座標を計算（mapの代わりに手動計算）
-      float normalized = (0.0 - graph_temp_min) / (graph_temp_max - graph_temp_min);
-      int16_t zero_y = graphY + graphHeight - (int16_t)(normalized * graphHeight);
-      
-      // 黒実線（太め）で描画
-      display.drawLine(graphX, zero_y, graphX + graphWidth, zero_y, GxEPD_BLACK);
-      display.drawLine(graphX, zero_y+1, graphX + graphWidth, zero_y+1, GxEPD_BLACK);
-    }
-    
-    // 温度グラフを描画
-    for (int i = 0; i < history_count - 1; i++) {
-      // 古い順に描画（history_indexから開始して円環状にアクセス）
-      int idx1 = (history_index - history_count + i + HISTORY_SIZE) % HISTORY_SIZE;
-      int idx2 = (history_index - history_count + i + 1 + HISTORY_SIZE) % HISTORY_SIZE;
-      
-      float t1 = temp_history[idx1];
-      float t2 = temp_history[idx2];
-      
-      // X座標（時間軸）
-      int16_t x1 = graphX + (i * graphWidth) / (history_count - 1);
-      int16_t x2 = graphX + ((i + 1) * graphWidth) / (history_count - 1);
-      
-      // Y座標（温度軸）- 上下反転に注意
-      float norm1 = (t1 - graph_temp_min) / (graph_temp_max - graph_temp_min);
-      float norm2 = (t2 - graph_temp_min) / (graph_temp_max - graph_temp_min);
-      int16_t y1 = graphY + graphHeight - (int16_t)(norm1 * graphHeight);
-      int16_t y2 = graphY + graphHeight - (int16_t)(norm2 * graphHeight);
-      
-      display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
-    }
-  }
-  
-  // ========== 湿度グラフ ==========
-  if (aht21_enabled) {
-    graphY = 175;
-    
-    // "HUMIDITY" ラベル（常に表示）
-    u8g2Fonts.setFont(u8g2_font_helvR08_tf);
-    u8g2Fonts.setCursor(graphX, graphY - 5);
-    u8g2Fonts.print("HUMIDITY");
-    
-    // グリッド線（常に表示）
-    for (int i = 0; i <= 2; i++) {
-      int16_t y = graphY + i * (graphHeight / 2);
-      for (int x = graphX; x < graphX + graphWidth; x += 4) {
-        display.drawPixel(x, y, GxEPD_BLACK);
-      }
-    }
-    
-    // データがある場合のみ湿度グラフを描画
-    if (history_count >= 2) {
-      for (int i = 0; i < history_count - 1; i++) {
-        int idx1 = (history_index - history_count + i + HISTORY_SIZE) % HISTORY_SIZE;
-        int idx2 = (history_index - history_count + i + 1 + HISTORY_SIZE) % HISTORY_SIZE;
-        
-        float h1 = humid_history[idx1];
-        float h2 = humid_history[idx2];
-        
-        // X座標
-        int16_t x1 = graphX + (i * graphWidth) / (history_count - 1);
-        int16_t x2 = graphX + ((i + 1) * graphWidth) / (history_count - 1);
-        
-        // Y座標（0-100%固定）
-        int16_t y1 = graphY + graphHeight - (int16_t)((h1 / 100.0) * graphHeight);
-        int16_t y2 = graphY + graphHeight - (int16_t)((h2 / 100.0) * graphHeight);
-        
-        display.drawLine(x1, y1, x2, y2, GxEPD_BLACK);
-      }
+  if (!any_bar) return;
+
+  // 棒の高さは24時間の最低〜最高に合わせる（温度は ±0.3°C の余白で幅 3°C 以上、湿度は ±1% の余白で幅 15% 以上）
+  float temp_lo, temp_hi, humid_lo, humid_hi;
+  climateBarRange(temp_bar, has_bar, 0.3f, 3.0f, temp_lo, temp_hi);
+  climateBarRange(humid_bar, has_bar, 1.0f, 15.0f, humid_lo, humid_hi);
+
+  for (int k = 0; k < CM_BARS; k++) {
+    if (!has_bar[k]) continue;
+    int16_t x = CM_BAR_X + k * CM_BAR_PITCH;
+
+    // 温度: 上へ伸びる黒い棒
+    int16_t temp_h = CM_TEMP_BAR_MIN_H + (int16_t)lroundf((temp_bar[k] - temp_lo) / (temp_hi - temp_lo) * CM_TEMP_BAR_RANGE);
+    display.fillRect(x, CM_TEMP_BAR_BOTTOM + 1 - temp_h, CM_BAR_W, temp_h, GxEPD_BLACK);
+
+    // 湿度: 下へ伸びる白抜きの棒（温度の棒に向いた上の辺は、枠を描かずに開けておく）。BMP280 だけのときは湿度がないので描かない
+    if (aht21_enabled) {
+      int16_t humid_h = CM_HUMID_BAR_MIN_H + (int16_t)lroundf((humid_bar[k] - humid_lo) / (humid_hi - humid_lo) * CM_HUMID_BAR_RANGE);
+      display.fillRect(x, CM_HUMID_BAR_TOP, CM_BAR_W, humid_h, GxEPD_BLACK);
+      display.fillRect(x + 1, CM_HUMID_BAR_TOP, CM_BAR_W - 2, humid_h - 1, GxEPD_WHITE);
     }
   }
 }
