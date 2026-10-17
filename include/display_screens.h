@@ -72,7 +72,7 @@ void displayWeather(const WeatherData& weather, bool has_location, bool wifi_con
 void displayPressure(const BMP280Data& bmp280_data, bool bmp280_enabled, float trend_3h);
 
 // 画面11: Sound（レトロな VU メーター）
-// 針は補正後の騒音（マイク基板のノイズの高さを引いた dB、+0〜+40）。+30dB から右は黒い帯（うるさい）
+// 針は iPhone の騒音計アプリに合わせた騒音（30〜80dB）。70dB から右は黒い帯（うるさい）
 void displaySound(const MAX9814Data& max9814_data, bool sensor_enabled);
 
 // 画面12: Light（猫の目）

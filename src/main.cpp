@@ -558,7 +558,7 @@ void loop() {
       veml7700_data = veml7700.read();
     }
     if (sensor_max9814_enabled) {
-      // 設定ページで引く値を変えたらすぐ反映されるよう、毎回渡す
+      // 設定ページで静かなときの騒音レベルを変えたらすぐ反映されるよう、毎回渡す
       max9814.setNoiseFloor(settings.mic_floor_db);
       max9814_data = max9814.read();
       current_sound_db = max9814_data.db_level;  // 設定ページに「今の騒音レベル」として出す
@@ -712,9 +712,9 @@ void loop() {
         Serial.print(max9814_data.db_level, 1);
         Serial.println(" dB");
 
-        Serial.print("  🔊 騒音レベル（補正後）: +");
-        Serial.print(max9814_data.db_above_floor, 1);
-        Serial.print(" dB（引く値 ");  // マイク基板のノイズの高さ（設定ページで変えられる）
+        Serial.print("  🔊 騒音レベル（iPhone に合わせた値）: ");
+        Serial.print(max9814_data.db_phone, 1);
+        Serial.print(" dB（静かなときの騒音レベル ");  // マイク基板のノイズの高さ（設定ページで変えられる）
         Serial.print(settings.mic_floor_db);
         Serial.println(" dB）");
       }
